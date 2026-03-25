@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -197,9 +198,17 @@
             font-size: 24px;
         }
 
-        .stat-card-value.green { color: #52c41a; }
-        .stat-card-value.orange { color: #faad14; }
-        .stat-card-value.purple { color: #722ed1; }
+        .stat-card-value.green {
+            color: #52c41a;
+        }
+
+        .stat-card-value.orange {
+            color: #faad14;
+        }
+
+        .stat-card-value.purple {
+            color: #722ed1;
+        }
 
         /* カード */
         .card {
@@ -400,6 +409,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <!-- サイドバー -->
@@ -596,7 +606,9 @@
 
     <script>
         // API エンドポイント
-        const API_BASE_URL = 'http://localhost:5000/api';
+        const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:5000/api'
+            : 'https://shigotoyou-backend.onrender.com/api';
         const API_CONTRACTS = `${API_BASE_URL}/contracts`;
 
         let contractsData = [];
@@ -628,7 +640,7 @@
             try {
                 const response = await fetch(API_CONTRACTS);
                 const result = await response.json();
-                
+
                 if (result.success && result.data) {
                     contractsData = result.data;
                     initTables();
@@ -651,7 +663,7 @@
             const uploadDate = contract.uploaded_at ? contract.uploaded_at.split('T')[0] : '-';
             const status = contract.status === 'completed' ? 'completed' : 'pending';
             const statusText = status === 'completed' ? '署名完了' : '署名待ち';
-            
+
             let row = `
                 <tr>
                     <td>${contract.contract_id}</td>
@@ -667,7 +679,7 @@
                 const statusClass = status === 'completed' ? 'badge-success' : 'badge-warning';
                 const icon = status === 'completed' ? 'fas fa-check-circle' : 'fas fa-clock';
                 const signedDate = sheetInfo?.signed_at ? sheetInfo.signed_at.split('T')[0] : '-';
-                
+
                 row += `
                     <td>
                         <span class="badge ${statusClass}">
@@ -716,7 +728,7 @@
                 formData.append('file', file);
 
                 console.log('📤 ファイルをアップロード中:', file.name);
-                
+
                 const response = await fetch(`${API_CONTRACTS}/upload`, {
                     method: 'POST',
                     body: formData
@@ -726,10 +738,10 @@
 
                 if (result.success) {
                     console.log('✅ アップロード成功:', result);
-                    
+
                     // 詳細な結果ダイアログを表示
                     showUploadResultDialog(result.data);
-                    
+
                     // データをリフレッシュ
                     await fetchContracts();
                 } else {
@@ -748,7 +760,7 @@
                 .filter(d => d.status === 'matched')
                 .map(d => `<li style="color: green;">✅ ${d.sheet_name} → ${d.full_name} (${d.employee_id})</li>`)
                 .join('');
-            
+
             const unmatchedDetails = data.details
                 .filter(d => d.status === 'unmatched')
                 .map(d => {
@@ -758,7 +770,7 @@
                     return `<li style="color: red;">❌ ${d.sheet_name} → ${searchInfo} (見つかりません)</li>`;
                 })
                 .join('');
-            
+
             let html = `
                 <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
                     <div style="background: white; padding: 30px; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.2);">
@@ -797,7 +809,7 @@
                     </div>
                 </div>
             `;
-            
+
             document.body.insertAdjacentHTML('beforeend', html);
         }
 
@@ -835,4 +847,5 @@
         document.addEventListener('DOMContentLoaded', fetchContracts);
     </script>
 </body>
+
 </html>

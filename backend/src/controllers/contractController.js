@@ -7,8 +7,14 @@ class ContractController {
   // 全契約書取得
   async getContracts(req, res) {
     try {
+      // 契約書一覧を取得（最初の従業員名も含める）
       const contracts = await dbQuery(
-        `SELECT * FROM contracts ORDER BY uploaded_at DESC LIMIT 50`
+        `SELECT c.*, 
+                (SELECT u.full_name FROM contract_sheets cs JOIN users u ON cs.user_id = u.id WHERE cs.contract_id = c.id LIMIT 1) as name,
+                (SELECT u.position FROM contract_sheets cs JOIN users u ON cs.user_id = u.id WHERE cs.contract_id = c.id LIMIT 1) as position
+         FROM contracts c 
+         ORDER BY c.uploaded_at DESC 
+         LIMIT 50`
       );
       res.json({ success: true, data: contracts, count: contracts.length });
     } catch (error) {
@@ -50,7 +56,7 @@ class ContractController {
         // シート名またはセルから抽出した従業員名
         const employeeName = sheet.employeeName || sheet.name;
         const sheetNameExtracted = sheet.sheetNameExtracted; // シート名から抽出した苗字
-        
+
         console.log(`\n🔍 マッチング開始: "${employeeName}"`);
         console.log(`  📊 シート情報:`, JSON.stringify({
           employeeName: sheet.employeeName,
@@ -65,7 +71,7 @@ class ContractController {
         let user = null;
         const searchName = employeeName.replace(/\s+/g, '').replace(/　+/g, ''); // スペース除去
         console.log(`  検索対象: "${employeeName}" (スペース除去: "${searchName}")`);
-        
+
         // 方法1: フルネーム で完全一致
         user = await dbGet(
           `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE full_name = ?`,
@@ -134,12 +140,12 @@ class ContractController {
         let userFromSheetName = null;
         if (sheetNameExtracted) {
           console.log(`\n  🚨 重要マッチング: シート名から抽出した苗字 "${sheetNameExtracted}" で確実に検索します`);
-          
+
           userFromSheetName = await dbGet(
             `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE last_name = ?`,
             [sheetNameExtracted]
           );
-          
+
           if (userFromSheetName) {
             console.log(`  ✅ シート名マッチング成功: ${userFromSheetName.full_name} (${userFromSheetName.employee_id})`);
             user = userFromSheetName; // これを優先する
@@ -193,10 +199,10 @@ class ContractController {
           }
         } else {
           const failureDetails = `検索名: "${employeeName}"`;
-          const detailsWithSheetName = sheetNameExtracted && sheetNameExtracted !== employeeName 
-            ? `${failureDetails}, シート名から: "${sheetNameExtracted}"` 
+          const detailsWithSheetName = sheetNameExtracted && sheetNameExtracted !== employeeName
+            ? `${failureDetails}, シート名から: "${sheetNameExtracted}"`
             : failureDetails;
-          
+
           matchedSheets.push({
             sheet_name: sheet.name,
             employee_name: employeeName,
