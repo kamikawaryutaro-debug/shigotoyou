@@ -3,9 +3,8 @@
  * JWTトークン付きfetchラッパー
  */
 
-// 動的にAPIのURLを決定（スマホからのアクセスにも対応）
-const API_HOST = window.location.hostname || 'localhost';
-const API_BASE = `http://${API_HOST}:5000/api`;
+// API の URL を決定（Vite の環境変数を使用）
+const API_BASE = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000/api`;
 
 // ローカルストレージからトークンを取得
 function getToken() {
