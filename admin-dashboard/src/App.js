@@ -12,7 +12,6 @@ import {
   Modal,
   message,
   Tabs,
-  Badge,
   Space,
   Avatar,
   Tag,
