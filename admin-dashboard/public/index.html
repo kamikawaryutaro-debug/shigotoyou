@@ -656,11 +656,26 @@
 
         // テーブル行を生成
         function generateTableRow(contract, showSignedDate = true) {
-            // シート情報から従業員情報を抽出
+            // シート情報またはコントローラーから付与された名前を取得
             const sheetInfo = contract.sheets && contract.sheets[0];
-            const name = sheetInfo?.full_name || '未設定';
-            const position = sheetInfo?.position || '-';
-            const uploadDate = contract.uploaded_at ? contract.uploaded_at.split('T')[0] : '-';
+            const name = sheetInfo?.full_name || contract.name || '未設定';
+            const position = sheetInfo?.position || contract.position || '-';
+
+            // 日本時間（JST）に変換して表示
+            let uploadDate = '-';
+            if (contract.uploaded_at) {
+                const date = new Date(contract.uploaded_at);
+                // 日本語形式のロケール文字列に変換
+                uploadDate = date.toLocaleString('ja-JP', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                }).replace(/\//g, '-');
+            }
             const status = contract.status === 'completed' ? 'completed' : 'pending';
             const statusText = status === 'completed' ? '署名完了' : '署名待ち';
 
