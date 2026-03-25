@@ -30,6 +30,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import './App.css';
+import API_BASE from './api-config';
 
 const { Header, Sider, Content, Footer } = Layout;
 
@@ -380,7 +381,7 @@ export default function App() {
       >
         <Upload
           name="file"
-          action="http://localhost:5000/api/contracts/upload"
+          action={`${API_BASE}/contracts/upload`}
           accept=".xlsx,.xls"
           maxCount={1}
           onChange={handleUploadChange}
