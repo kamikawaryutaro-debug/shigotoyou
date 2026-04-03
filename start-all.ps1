@@ -24,15 +24,15 @@ Start-Sleep -Seconds 2
 
 # --- 2. Admin Dashboard ---
 Write-Host ""
-Write-Host "[2/3] Starting Admin Dashboard..." -ForegroundColor Yellow
-$adminDir = Join-Path (Join-Path $ROOT "admin-dashboard") "public"
+Write-Host "[2/3] Starting Admin Dashboard (Vite)..." -ForegroundColor Yellow
+$adminDir = Join-Path $ROOT "admin-dashboard-vite"
 
-$adminProcess = Start-Process -FilePath "npx.cmd" -ArgumentList "--yes serve -p 3000" -WorkingDirectory $adminDir -PassThru -WindowStyle Normal
+$adminProcess = Start-Process -FilePath "npm.cmd" -ArgumentList "run dev" -WorkingDirectory $adminDir -PassThru -WindowStyle Normal
 Write-Host "  STARTED: Admin Server (PID: $($adminProcess.Id))" -ForegroundColor Green
-Write-Host "  URL: http://localhost:3000" -ForegroundColor Gray
+Write-Host "  URL: http://localhost:5173" -ForegroundColor Gray
 
 Start-Sleep -Seconds 2
-Start-Process "http://localhost:3000"
+Start-Process "http://localhost:5173"
 
 # --- 3. Employee PWA ---
 Write-Host ""

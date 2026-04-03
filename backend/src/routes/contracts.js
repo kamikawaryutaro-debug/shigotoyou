@@ -24,7 +24,14 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const timestamp = Date.now();
-    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    let originalName = file.originalname;
+    try {
+        const decoded = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        // Accept decoded if it preserves .xls/.xlsx
+        if (decoded.toLowerCase().endsWith('.xls') || decoded.toLowerCase().endsWith('.xlsx')) {
+            originalName = decoded;
+        }
+    } catch(e) {}
     const ext = path.extname(originalName);
     const name = path.basename(originalName, ext);
     cb(null, `${name}-${timestamp}${ext}`);
@@ -34,13 +41,27 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    let originalName;
+    try {
+      originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    } catch (e) {
+      originalName = file.originalname;
+    }
+    
+    // Fallback if originalName getting corrupted
+    if (!originalName.toLowerCase().endsWith('.xls') && !originalName.toLowerCase().endsWith('.xlsx')) {
+        originalName = file.originalname; // Revert to raw name if extension got broken
+    }
+
     const allowedExt = ['.xlsx', '.xls'];
     const ext = path.extname(originalName).toLowerCase();
+    
+    console.log(`[Upload Filter] raw: ${file.originalname}, parsed: ${originalName}, ext: ${ext}`);
+    
     if (allowedExt.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Excel ファイル（.xlsx, .xls）のみ対応'));
+      cb(new Error(`Excel ファイル（.xlsx, .xls）のみ対応。認識された拡張子: ${ext}`));
     }
   }
 });

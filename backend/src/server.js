@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import employeeRoutes from './routes/employee.js';
 import pushRoutes from './routes/push.js';
 import lineRoutes from './routes/line.js';
+import adminRoutes from './routes/admin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,6 +48,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employee', employeeRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/line', lineRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 基本API情報
 app.get('/api', (req, res) => {
