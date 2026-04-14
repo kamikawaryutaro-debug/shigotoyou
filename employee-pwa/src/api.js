@@ -4,7 +4,10 @@
  */
 
 // API の URL を決定（Vite の環境変数を使用）
-const API_BASE = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000/api`;
+const API_BASE = import.meta.env.VITE_API_URL ||
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? `http://${window.location.hostname}:5000/api`
+    : 'https://shigotoyou-backend.onrender.com/api');
 
 // ローカルストレージからトークンを取得
 function getToken() {

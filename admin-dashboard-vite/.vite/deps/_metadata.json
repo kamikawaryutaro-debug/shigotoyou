@@ -1,0 +1,68 @@
+{
+  "hash": "d10acd83",
+  "configHash": "8b7b5637",
+  "lockfileHash": "2885bc04",
+  "browserHash": "56a8cd87",
+  "optimized": {
+    "@ant-design/icons": {
+      "src": "../../node_modules/@ant-design/icons/es/index.js",
+      "file": "@ant-design_icons.js",
+      "fileHash": "f13e4cc2",
+      "needsInterop": false
+    },
+    "antd": {
+      "src": "../../node_modules/antd/es/index.js",
+      "file": "antd.js",
+      "fileHash": "f5d60526",
+      "needsInterop": false
+    },
+    "axios": {
+      "src": "../../node_modules/axios/index.js",
+      "file": "axios.js",
+      "fileHash": "8775ea4c",
+      "needsInterop": false
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "09dad876",
+      "needsInterop": true
+    },
+    "react-router-dom": {
+      "src": "../../node_modules/react-router-dom/dist/index.mjs",
+      "file": "react-router-dom.js",
+      "fileHash": "a3d597c4",
+      "needsInterop": false
+    },
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "75839c53",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "5d3bc6b0",
+      "needsInterop": true
+    }
+  },
+  "chunks": {
+    "chunk-BoAXSpZd": {
+      "file": "chunk-BoAXSpZd.js",
+      "isDynamicEntry": false
+    },
+    "client-JFRCG6sr": {
+      "file": "client-JFRCG6sr.js",
+      "isDynamicEntry": false
+    },
+    "react-dom-POQGi4tS": {
+      "file": "react-dom-POQGi4tS.js",
+      "isDynamicEntry": false
+    },
+    "ref-K4X2vmDx": {
+      "file": "ref-K4X2vmDx.js",
+      "isDynamicEntry": false
+    }
+  }
+}

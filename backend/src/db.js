@@ -42,6 +42,70 @@ export const initializeDatabase = async () => {
       }
     }
 
+    // --- 自動移行: email カラムの NOT NULL 制約を解除 ---
+    try {
+      const tableInfo = await db.all("PRAGMA table_info(users)");
+      const emailCol = tableInfo.find(c => c.name === 'email');
+
+      // notnull === 1 の場合は制約があるため移行が必要
+      if (emailCol && emailCol.notnull === 1) {
+        console.log('🔧 email カラムの制約変更（移行）を開始します...');
+        await db.exec('BEGIN TRANSACTION;');
+
+        // 1. 新しいテーブル作成
+        await db.exec(`
+          CREATE TABLE IF NOT EXISTS users_new (
+            id TEXT PRIMARY KEY,
+            employee_id TEXT UNIQUE NOT NULL,
+            first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            email TEXT UNIQUE,
+            password_hash TEXT,
+            phone TEXT,
+            department TEXT,
+            position TEXT,
+            status TEXT DEFAULT 'active',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            last_login_at TEXT,
+            line_user_id TEXT
+          );
+        `);
+
+        // 2. データ移行
+        await db.exec('INSERT INTO users_new SELECT * FROM users;');
+        // 3. 元のテーブル削除
+        await db.exec('DROP TABLE users;');
+        // 4. 名前変更
+        await db.exec('ALTER TABLE users_new RENAME TO users;');
+        // 5. インデックス再作成
+        await db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);');
+        await db.exec('CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);');
+
+        await db.exec('COMMIT;');
+        console.log('✅ 移行完了: users テーブルの email カラムを任意項目に変更しました');
+
+        // 移行と同時にパスワードも一度リセットして初期状態に戻す
+        await db.run('UPDATE users SET password_hash = NULL');
+        console.log('🔑 本番環境のパスワードをリセットしました（初回ログイン待ち状態）');
+      }
+    } catch (e) {
+      try { await db.exec('ROLLBACK;'); } catch (r) { }
+      console.error('⚠️ 移行失敗:', e.message);
+    }
+
+    // --- 本番環境用: パスワードリセット（初回のみ/または必要に応じて） ---
+    // もし環境変数 RESET_PASSWORDS があれば、全ユーザーのパスワードをリセットする
+    if (process.env.RESET_PASSWORDS === 'true') {
+      try {
+        await db.run('UPDATE users SET password_hash = NULL');
+        console.log('🔑 パスワードリセット完了: 全従業員が新しいパスワードでログイン可能です');
+      } catch (e) {
+        console.error('⚠️ パスワードリセット失敗:', e.message);
+      }
+    }
+
     // テーブル作成
     await createTables();
 
