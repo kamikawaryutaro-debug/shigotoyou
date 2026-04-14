@@ -96,6 +96,18 @@ class ContractController {
           }
         }
 
+        // 方法2.5: シート名そのもの（スペース除去）でフルネーム一致
+        if (!user && sheet.name) {
+          const sheetSearchName = sheet.name.replace(/\s+/g, '').replace(/　+/g, '');
+          user = await dbGet(
+            `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE REPLACE(REPLACE(full_name, ' ', ''), '　', '') = ?`,
+            [sheetSearchName]
+          );
+          if (user) {
+            console.log(`  ✅ 方法2.5（シート名完全一致）でマッチ: ${user.full_name}`);
+          }
+        }
+
         // 方法3: フルネーム部分マッチ
         if (!user) {
           user = await dbGet(

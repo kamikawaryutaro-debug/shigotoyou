@@ -265,7 +265,6 @@ export default function EmployeesPage() {
             name="email"
             label="メールアドレス"
             rules={[
-              { required: true, message: 'メールアドレスを入力してください' },
               { type: 'email', message: '有効なメールアドレスを入力してください' }
             ]}
           >

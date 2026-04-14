@@ -172,20 +172,30 @@ router.post('/users', async (req, res) => {
   try {
     const { employee_id, first_name, last_name, email, phone, department, position } = req.body;
 
-    if (!employee_id || !first_name || !last_name || !email) {
+    if (!employee_id || !first_name || !last_name) {
       return res.status(400).json({
         success: false,
-        error: '従業員ID、姓、名、メールアドレスは必須です'
+        error: '従業員ID、姓、名は必須です'
       });
     }
 
     // 重複チェック
-    const existing = await dbGet('SELECT id FROM users WHERE employee_id = ? OR email = ?', [employee_id, email]);
-    if (existing) {
+    const existingId = await dbGet('SELECT id FROM users WHERE employee_id = ?', [employee_id]);
+    if (existingId) {
       return res.status(409).json({
         success: false,
-        error: '同じ従業員IDまたはメールアドレスが既に登録されています'
+        error: '同じ従業員IDが既に登録されています'
       });
+    }
+
+    if (email) {
+      const existingEmail = await dbGet('SELECT id FROM users WHERE email = ?', [email]);
+      if (existingEmail) {
+        return res.status(409).json({
+          success: false,
+          error: '同じメールアドレスが既に登録されています'
+        });
+      }
     }
 
     const id = uuidv4();
@@ -195,7 +205,7 @@ router.post('/users', async (req, res) => {
     await dbRun(
       `INSERT INTO users (id, employee_id, first_name, last_name, full_name, email, phone, department, position, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
-      [id, employee_id, first_name, last_name, full_name, email, phone || null, department || null, position || null, now, now]
+      [id, employee_id, first_name, last_name, full_name, email || null, phone || null, department || null, position || null, now, now]
     );
 
     res.json({
@@ -231,7 +241,7 @@ router.put('/users/:id', async (req, res) => {
         employee_id = ?, first_name = ?, last_name = ?, full_name = ?,
         email = ?, phone = ?, department = ?, position = ?, status = ?, updated_at = ?
        WHERE id = ?`,
-      [employee_id, first_name, last_name, full_name, email, phone || null, department || null, position || null, status || 'active', now, id]
+      [employee_id, first_name, last_name, full_name, email || null, phone || null, department || null, position || null, status || 'active', now, id]
     );
 
     res.json({

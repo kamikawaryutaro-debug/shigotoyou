@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // 環境変数またはデフォルトのパス（プロセス実行ディレクトリ基準）
-const dbPath = process.env.DATABASE_PATH 
+const dbPath = process.env.DATABASE_PATH
   ? path.resolve(process.cwd(), process.env.DATABASE_PATH)
   : path.join(__dirname, '..', '..', 'data', 'contract_approval.db');
 
@@ -63,7 +63,7 @@ const createTables = async () => {
       first_name TEXT NOT NULL,
       last_name TEXT NOT NULL,
       full_name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE,
       password_hash TEXT,
       phone TEXT,
       department TEXT,
@@ -197,10 +197,10 @@ const insertSampleData = async () => {
   try {
     // 既存データ確認
     const existingUsers = await db.get('SELECT COUNT(*) as count FROM users');
-    
+
     if (existingUsers && existingUsers.count > 0) {
       console.log(`✅ サンプルデータは既に存在します（${existingUsers.count}名）`);
-      
+
       // ただし、「清水」がいない場合は追加する
       const shimizu = await db.get('SELECT id FROM users WHERE last_name = ?', ['清水']);
       if (!shimizu) {
