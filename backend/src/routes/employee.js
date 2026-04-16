@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { dbRun, dbQuery, dbGet } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
 import excelService from '../services/excelService.js';
+import pdfService from '../services/pdfService.js';
 
 const router = express.Router();
 
@@ -257,6 +258,45 @@ router.post('/contracts/:sheetId/sign', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ 署名エラー:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/employee/contracts/:sheetId/pdf
+ * ExcelファイルをPDFに変換して返す
+ */
+router.get('/contracts/:sheetId/pdf', async (req, res) => {
+  try {
+    const { sheetId } = req.params;
+
+    const sheet = await dbGet(
+      `SELECT c.file_path, c.file_name 
+       FROM contract_sheets cs
+       JOIN contracts c ON cs.contract_id = c.id
+       WHERE cs.id = ? AND cs.user_id = ?`,
+      [sheetId, req.user.id]
+    );
+
+    if (!sheet || !sheet.file_path) {
+      return res.status(404).json({ success: false, error: 'ファイルが見つかりません。' });
+    }
+
+    try {
+      const pdfBuffer = await pdfService.convertExcelToPdf(sheet.file_path);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${sheet.file_name.replace('.xlsx', '.pdf')}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error('❌ PDF変換エラー:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        details: 'LibreOfficeが正しくインストールされているか確認してください。'
+      });
+    }
+  } catch (error) {
+    console.error('❌ PDFエンドポイントエラー:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
