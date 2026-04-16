@@ -1,22 +1,23 @@
 /**
  * 契約書内容確認画面
  * スクロール完了を検知して署名ボタンを有効にする
- * PDF表示対応
+ * 画像表示対応（PNG スクリーンショット）
  */
 import { getContractDetail } from '../api.js';
 import { navigateTo, showToast } from '../main.js';
 
 let currentSheetId = null;
-let pdfDoc = null;
-let currentPage = 1;
-let totalPages = 0;
-let viewMode = 'pdf'; // 'pdf' or 'html'
+let contractImages = [];
+let currentImagePage = 1;
 let isScrolled = false;
+let viewMode = 'image'; // 'image' or 'html'
 
 export function renderContractView(sheetId) {
   currentSheetId = sheetId;
   isScrolled = false;
-  viewMode = 'pdf';
+  viewMode = 'image';
+  contractImages = [];
+  currentImagePage = 1;
   
   return `
     <header class="app-header">
@@ -47,20 +48,20 @@ export async function initContractView() {
 
     const contentEl = document.getElementById('contractContent');
 
-    // PDF表示への試行
-    let pdfUrl = null;
+    // 画像表示への試行
+    let imageUrl = null;
     const API_HOST = window.location.hostname || 'localhost';
     const token = localStorage.getItem('auth_token');
-    pdfUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/pdf?token=${token}`;
+    imageUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/images?token=${token}`;
 
-    // HTTPテストを実施（ファイアウォール回避など）
-    let pdfAvailable = false;
+    // 画像取得テスト
+    let imageAvailable = false;
     try {
-      const headResponse = await fetch(pdfUrl, { method: 'HEAD' });
-      pdfAvailable = headResponse.ok;
+      const headResponse = await fetch(imageUrl, { method: 'HEAD' });
+      imageAvailable = headResponse.ok;
     } catch (e) {
-      console.warn('⚠️ PDF取得テスト失敗:', e.message);
-      pdfAvailable = false;
+      console.warn('⚠️ 画像取得テスト失敗:', e.message);
+      imageAvailable = false;
     }
 
     const downloadUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/download?token=${token}`;
@@ -82,29 +83,29 @@ export async function initContractView() {
           <a href="${downloadUrl}" class="btn btn--outline btn--sm" download>
             ⬇️ Excelファイルをダウンロード
           </a>
-          ${pdfAvailable ? '<button id="toggleViewBtn" class="btn btn--outline btn--sm">📄 表示形式を変更</button>' : ''}
+          ${imageAvailable ? '<button id="toggleViewBtn" class="btn btn--outline btn--sm">📄 表示形式を変更</button>' : ''}
         </div>
       </div>
 
       ${!isSigned ? `<div id="scrollNotice" class="contract-view__scroll-notice">
-        ⬇️ 内容を最後までスクロールしてください
+        ⬇️ 全ページをご確認ください
       </div>` : ''}
 
       <div id="viewContainer">
-        ${pdfAvailable ? `
-          <div id="pdfViewerContainer" style="display: none;">
-            <div id="pdfControls" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; justify-content: center; flex-wrap: wrap;">
-              <button id="pdfPrevBtn" class="btn btn--sm btn--outline">← 前ページ</button>
-              <span id="pdfPageInfo" style="font-size: 0.875rem; min-width: 100px; text-align: center; color: var(--text-muted);">-</span>
-              <button id="pdfNextBtn" class="btn btn--sm btn--outline">次ページ →</button>
+        ${imageAvailable ? `
+          <div id="imageViewerContainer">
+            <div id="imageControls" style="margin: 12px 0; display: flex; align-items: center; gap: 8px; justify-content: center; flex-wrap: wrap;">
+              <button id="imagePrevBtn" class="btn btn--sm btn--outline">← 前ページ</button>
+              <span id="imagePageInfo" style="font-size: 0.875rem; min-width: 120px; text-align: center; color: var(--text-muted);">読み込み中...</span>
+              <button id="imageNextBtn" class="btn btn--sm btn--outline">次ページ →</button>
             </div>
-            <div id="pdfCanvas" style="text-align: center; overflow-x: auto; max-width: 100%;">
-              <canvas id="contractPdfCanvas" style="max-width: 100%; border: 1px solid var(--border-color); border-radius: 4px; background: white;"></canvas>
+            <div id="imageCanvas" style="text-align: center; overflow-x: auto; max-width: 100%; margin-bottom: 12px;">
+              <img id="contractImage" src="" alt="契約書" style="max-width: 100%; border: 1px solid var(--border-color); border-radius: 4px; background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />
             </div>
           </div>
         ` : ''}
         
-        <div id="htmlViewContainer" class="contract-view__content" style="display: ${pdfAvailable ? 'none' : 'block'};">
+        <div id="htmlViewContainer" style="display: ${imageAvailable ? 'none' : 'block'};">
           ${buildContentHtml(data)}
         </div>
       </div>
@@ -118,15 +119,15 @@ export async function initContractView() {
           </div>
         </div>
       ` : `
-        <button class="btn btn--primary" id="goSignBtn" ${pdfAvailable ? 'disabled' : ''}>
-          🔒 署名するには最後までスクロールしてください
+        <button class="btn btn--primary" id="goSignBtn" ${imageAvailable ? 'disabled' : ''}>
+          🔒 最後のページを確認してから署名してください
         </button>
       `}
     `;
 
-    // PDF表示の初期化
-    if (pdfAvailable) {
-      await initPdfViewer(pdfUrl, isSigned);
+    // 画像表示の初期化
+    if (imageAvailable) {
+      await initImageViewer(imageUrl, isSigned);
       
       // トグルボタンの処理
       const toggleBtn = document.getElementById('toggleViewBtn');
@@ -135,41 +136,37 @@ export async function initContractView() {
           toggleViewMode();
         });
       }
-    }
-
-    // スクロール検知（HTML表示モード対応）
-    if (!isSigned && !pdfAvailable) {
+    } else if (!isSigned) {
+      // HTML表示モードの場合、スクロール検知を設定
       const htmlContainer = document.getElementById('htmlViewContainer');
       const signBtn = document.getElementById('goSignBtn');
-      const notice = document.getElementById('scrollNotice');
 
-      const checkScroll = () => {
-        const { scrollTop, scrollHeight, clientHeight } = htmlContainer;
-        if (scrollHeight <= clientHeight + 10) {
-          enableSignButton();
-          return;
-        }
-        if (scrollTop + clientHeight >= scrollHeight - 20) {
-          enableSignButton();
-        }
-      };
+      if (htmlContainer) {
+        const checkScroll = () => {
+          const { scrollTop, scrollHeight, clientHeight } = htmlContainer;
+          if (scrollHeight <= clientHeight + 10) {
+            enableSignButton();
+            return;
+          }
+          if (scrollTop + clientHeight >= scrollHeight - 20) {
+            enableSignButton();
+          }
+        };
 
-      function enableSignButton() {
-        signBtn.disabled = false;
-        signBtn.innerHTML = '✍️ 署名に進む';
-        notice.classList.add('contract-view__scroll-done');
-        notice.innerHTML = '✅ 内容を確認しました';
+        function enableSignButton() {
+          signBtn.disabled = false;
+          signBtn.innerHTML = '✍️ 署名に進む';
+          const notice = document.getElementById('scrollNotice');
+          if (notice) {
+            notice.classList.add('contract-view__scroll-done');
+            notice.innerHTML = '✅ 内容を確認しました';
+          }
+        }
+
+        htmlContainer.addEventListener('scroll', checkScroll);
+        setTimeout(checkScroll, 300);
       }
 
-      htmlContainer.addEventListener('scroll', checkScroll);
-      setTimeout(checkScroll, 300);
-
-      signBtn.addEventListener('click', () => {
-        navigateTo(`/sign/${currentSheetId}`);
-      });
-    } else if (!isSigned && pdfAvailable) {
-      // PDF表示モード: PDFの最後のページを見たら署名可能
-      const signBtn = document.getElementById('goSignBtn');
       signBtn?.addEventListener('click', () => {
         navigateTo(`/sign/${currentSheetId}`);
       });
@@ -186,56 +183,50 @@ export async function initContractView() {
 }
 
 /**
- * PDFビューアーの初期化
+ * 画像ビューアーの初期化
  */
-async function initPdfViewer(pdfUrl, isSigned) {
+async function initImageViewer(imageUrl, isSigned) {
   try {
-    // PDF.jsの準備
-    if (!window.pdfjsLib) {
-      console.error('❌ PDF.js ライブラリが読み込まれていません');
-      return;
-    }
+    console.log('📄 契約書画像を取得中:', imageUrl);
 
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-    console.log('📄 PDFを取得中:', pdfUrl);
-
-    // ArrayBufferとしてPDFを取得
-    const response = await fetch(pdfUrl);
+    // 画像データを取得
+    const response = await fetch(imageUrl);
     if (!response.ok) {
-      throw new Error(`PDF取得失敗: HTTP ${response.status}`);
+      throw new Error(`画像取得失敗: HTTP ${response.status}`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    pdfDoc = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    totalPages = pdfDoc.numPages;
+    const result = await response.json();
+    if (!result.success || !result.data) {
+      throw new Error('画像データが取得できませんでした。');
+    }
 
-    console.log(`✅ PDF読み込み完了: ${totalPages} ページ`);
+    contractImages = result.data;
+    console.log(`✅ ${contractImages.length} ページを読み込み完了`);
 
     // 最初のページを表示
-    await renderPdfPage(1);
+    await renderImagePage(1);
 
     // ページネーションボタン
-    document.getElementById('pdfPrevBtn').addEventListener('click', () => {
-      if (currentPage > 1) {
-        currentPage--;
-        renderPdfPage(currentPage);
+    document.getElementById('imagePrevBtn').addEventListener('click', () => {
+      if (currentImagePage > 1) {
+        currentImagePage--;
+        renderImagePage(currentImagePage);
       }
     });
 
-    document.getElementById('pdfNextBtn').addEventListener('click', () => {
-      if (currentPage < totalPages) {
-        currentPage++;
-        renderPdfPage(currentPage);
+    document.getElementById('imageNextBtn').addEventListener('click', () => {
+      if (currentImagePage < contractImages.length) {
+        currentImagePage++;
+        renderImagePage(currentImagePage);
       }
     });
 
-    // スクロール検知（PDF表示時）
+    // スクロール検知（画像表示時）
     if (!isSigned) {
       const signBtn = document.getElementById('goSignBtn');
       
       const updateSignButtonState = () => {
-        if (currentPage === totalPages) {
+        if (currentImagePage === contractImages.length) {
           signBtn.disabled = false;
           signBtn.innerHTML = '✍️ 署名に進む';
           const notice = document.getElementById('scrollNotice');
@@ -246,13 +237,16 @@ async function initPdfViewer(pdfUrl, isSigned) {
         }
       };
 
-      document.getElementById('pdfNextBtn').addEventListener('click', updateSignButtonState);
-      document.getElementById('pdfPrevBtn').addEventListener('click', updateSignButtonState);
+      document.getElementById('imageNextBtn').addEventListener('click', updateSignButtonState);
+      
+      signBtn?.addEventListener('click', () => {
+        navigateTo(`/sign/${currentSheetId}`);
+      });
     }
 
   } catch (error) {
-    console.error('❌ PDF読み込みエラー:', error);
-    showToast(`PDF読み込みエラー: ${error.message}`, 'error');
+    console.error('❌ 画像読み込みエラー:', error);
+    showToast(`画像読み込みエラー: ${error.message}`, 'error');
     // HTMLビューにフォールバック
     viewMode = 'html';
     toggleViewMode();
@@ -260,77 +254,71 @@ async function initPdfViewer(pdfUrl, isSigned) {
 }
 
 /**
- * PDFページをキャンバスに描画
+ * 画像ページをレンダリング
  */
-async function renderPdfPage(pageNumber) {
+async function renderImagePage(pageNumber) {
   try {
-    const page = await pdfDoc.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: window.innerWidth < 768 ? 1 : 1.5 });
+    if (pageNumber < 1 || pageNumber > contractImages.length) {
+      return;
+    }
 
-    const canvas = document.getElementById('contractPdfCanvas');
-    const context = canvas.getContext('2d');
-
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    const renderContext = {
-      canvasContext: context,
-      viewport: viewport
-    };
-
-    await page.render(renderContext).promise;
+    const imageData = contractImages[pageNumber - 1];
+    const img = document.getElementById('contractImage');
+    
+    // Base64をDataURLに変換して表示
+    img.src = `data:${imageData.mimeType};base64,${imageData.base64}`;
     
     // ページ情報を更新
-    document.getElementById('pdfPageInfo').textContent = `${pageNumber} / ${totalPages}`;
+    document.getElementById('imagePageInfo').textContent = `${pageNumber} / ${contractImages.length}`;
     
     // ボタン状態を更新
-    document.getElementById('pdfPrevBtn').disabled = pageNumber === 1;
-    document.getElementById('pdfNextBtn').disabled = pageNumber === totalPages;
+    document.getElementById('imagePrevBtn').disabled = pageNumber === 1;
+    document.getElementById('imageNextBtn').disabled = pageNumber === contractImages.length;
 
-    console.log(`📄 ページ ${pageNumber} を描画完了`);
+    console.log(`📄 ページ ${pageNumber} を表示`);
   } catch (error) {
-    console.error('❌ PDFページ描画エラー:', error);
-    showToast('ページ描画に失敗しました', 'error');
+    console.error('❌ ページ表示エラー:', error);
+    showToast('ページ表示に失敗しました', 'error');
   }
 }
 
 /**
- * 表示形式の切り替え（PDF ↔ HTML）
+ * 表示形式の切り替え（画像 ↔ HTML）
  */
 function toggleViewMode() {
-  const pdfContainer = document.getElementById('pdfViewerContainer');
+  const imageContainer = document.getElementById('imageViewerContainer');
   const htmlContainer = document.getElementById('htmlViewContainer');
   const toggleBtn = document.getElementById('toggleViewBtn');
   const signBtn = document.getElementById('goSignBtn');
 
-  if (viewMode === 'pdf') {
+  if (viewMode === 'image') {
     // HTML表示に切り替え
     viewMode = 'html';
-    pdfContainer.style.display = 'none';
+    imageContainer.style.display = 'none';
     htmlContainer.style.display = 'block';
-    if (toggleBtn) toggleBtn.innerHTML = '📄 PDF表示に戻す';
+    if (toggleBtn) toggleBtn.innerHTML = '📄 画像表示に戻す';
     if (signBtn) signBtn.disabled = false; // HTMLモードでは無効化しない
   } else {
-    // PDF表示に切り替え
-    viewMode = 'pdf';
-    pdfContainer.style.display = 'block';
+    // 画像表示に切り替え
+    viewMode = 'image';
+    imageContainer.style.display = 'block';
     htmlContainer.style.display = 'none';
     if (toggleBtn) toggleBtn.innerHTML = '📄 HTML表示に変更';
-    if (signBtn) signBtn.disabled = true; // PDF表示中は無効化（最後まで見るまで）
+    if (signBtn) signBtn.disabled = true; // 画像表示中は無効化（最後まで見るまで）
   }
 }
 
 function buildContentHtml(data) {
   let contentHtml = '';
   if (data.sheet_data && data.sheet_data.html) {
-    contentHtml = `<div style="overflow-x: auto; max-width: 100%;">${data.sheet_data.html}</div>`;
+    contentHtml = `<div style="overflow-x: auto; max-width: 100%; padding: 12px; background: #f5f5f5; border-radius: 4px;">${data.sheet_data.html}</div>`;
   } else if (data.sheet_data && data.sheet_data.data) {
     contentHtml = buildSheetTable(data.sheet_data.data);
   } else {
     contentHtml = `
       <div style="padding: 24px; text-align: center; color: #666;">
         <p style="font-size: 1.25rem; margin-bottom: 8px;">📄 ${escapeHtml(data.sheet_name)}</p>
-        <p>契約書の内容は管理者から配布されたファイルをご確認ください。</p>
+        <p>契約書の内容は上記の画像をご確認ください。</p>
       </div>
     `;
   }
