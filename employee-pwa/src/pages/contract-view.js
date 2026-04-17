@@ -2,7 +2,7 @@
  * 契約書内容確認画面
  * スクロール完了を検知して署名ボタンを有効にする
  */
-import { getContractDetail } from '../api.js';
+import { getContractDetail, API_BASE } from '../api.js';
 import { navigateTo, showToast } from '../main.js';
 
 let currentSheetId = null;
@@ -39,8 +39,7 @@ export async function initContractView() {
     const contentEl = document.getElementById('contractContent');
 
     // エクセルの画面プレビュー（崩れる原因）を削除
-    const API_HOST = window.location.hostname || 'localhost';
-    const downloadUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/download?token=${localStorage.getItem('auth_token')}`;
+    const downloadUrl = `${API_BASE}/employee/contracts/${currentSheetId}/download?token=${localStorage.getItem('auth_token')}`;
 
     const statusBadge = isSigned
       ? '<span class="tag tag--signed">✅ 署名済み</span>'

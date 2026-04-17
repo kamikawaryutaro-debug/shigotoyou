@@ -3,11 +3,30 @@
  * JWTトークン付きfetchラッパー
  */
 
-// API の URL を決定（Vite の環境変数を使用）
-const API_BASE = import.meta.env.VITE_API_URL ||
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? `http://${window.location.hostname}:5000/api`
-    : 'https://shigotoyou-backend.onrender.com/api');
+// API の URL を決定
+// localStorage または URLパラメータ (?api=...) で一時的に接続先を変更できるように調整
+const getApiBase = () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const paramApi = urlParams.get('api');
+  if (paramApi) {
+    localStorage.setItem('custom_api_url', `http://${paramApi}:5000/api`);
+    return `http://${paramApi}:5000/api`;
+  }
+
+  const customApi = localStorage.getItem('custom_api_url');
+  if (customApi) return customApi;
+
+  // デフォルトの接続先設定
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `http://${window.location.hostname}:5000/api`;
+  }
+  
+  // 自宅PC（192.168.2.105）を優先的に見に行くように設定
+  // もし完全にインターネット版（Render）に戻す場合はここを元に戻します
+  return 'http://192.168.2.105:5000/api';
+};
+
+export const API_BASE = getApiBase();
 
 // ローカルストレージからトークンを取得
 function getToken() {
@@ -70,7 +89,7 @@ async function apiFetch(endpoint, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data.error || `HTTP ${response.status}`);
+    throw new Error(data.error || `サーバー接続エラー (HTTP ${response.status})`);
   }
 
   return data;
