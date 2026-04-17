@@ -131,14 +131,14 @@ router.get('/contracts/:sheetId', async (req, res) => {
 
 /**
  * GET /api/employee/contracts/:sheetId/download
- * オリジナルのExcelファイルをダウンロード
+ * 従業員個人のシートのみを含むExcelファイルをダウンロード
  */
 router.get('/contracts/:sheetId/download', async (req, res) => {
   try {
     const { sheetId } = req.params;
 
     const sheet = await dbGet(
-      `SELECT c.file_path, c.file_name 
+      `SELECT c.file_path, c.file_name, cs.sheet_name
        FROM contract_sheets cs
        JOIN contracts c ON cs.contract_id = c.id
        WHERE cs.id = ? AND cs.user_id = ?`,
@@ -149,7 +149,19 @@ router.get('/contracts/:sheetId/download', async (req, res) => {
       return res.status(404).json({ success: false, error: 'ファイルが見つかりません。' });
     }
 
-    res.download(sheet.file_path, sheet.file_name);
+    try {
+      // 指定したシートのみを含む新しいExcelのバッファを生成
+      const buffer = await excelService.getSingleSheetExcelBuffer(sheet.file_path, sheet.sheet_name);
+      
+      const fileName = `${sheet.sheet_name}_${sheet.file_name}`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.send(buffer);
+    } catch (excelError) {
+      console.warn('⚠️ 個別シート抽出失敗、フォールバックとして元ファイルを送信します:', excelError.message);
+      res.download(sheet.file_path, sheet.file_name);
+    }
   } catch (error) {
     console.error('❌ ファイルダウンロードエラー:', error);
     res.status(500).json({ success: false, error: 'ダウンロードに失敗しました。' });

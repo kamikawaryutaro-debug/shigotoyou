@@ -38,22 +38,7 @@ export async function initContractView() {
 
     const contentEl = document.getElementById('contractContent');
 
-    // シートデータをHTMLに変換（新しいHTML対応、旧データ構造のフォールバック含む）
-    let contentHtml = '';
-    if (data.sheet_data && data.sheet_data.html) {
-      // SheetJSからのHTML出力をそのまま注入
-      contentHtml = `<div style="overflow-x: auto; max-width: 100%;">${data.sheet_data.html}</div>`;
-    } else if (data.sheet_data && data.sheet_data.data) {
-      contentHtml = buildSheetTable(data.sheet_data.data);
-    } else {
-      contentHtml = `
-        <div style="padding: 24px; text-align: center; color: #666;">
-          <p style="font-size: 1.25rem; margin-bottom: 8px;">📄 ${escapeHtml(data.sheet_name)}</p>
-          <p>契約書の内容は管理者から配布されたファイルをご確認ください。</p>
-        </div>
-      `;
-    }
-
+    // エクセルの画面プレビュー（崩れる原因）を削除
     const API_HOST = window.location.hostname || 'localhost';
     const downloadUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/download?token=${localStorage.getItem('auth_token')}`;
 
@@ -62,29 +47,25 @@ export async function initContractView() {
       : '<span class="tag tag--pending">📝 署名待ち</span>';
 
     contentEl.innerHTML = `
-      <div class="card" style="cursor:default;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <h3 style="word-break: break-all;">${escapeHtml(data.sheet_name)}</h3>
-          ${statusBadge}
-        </div>
-        <div style="font-size:0.8125rem; color:var(--text-muted); margin-bottom: 12px;">
+      <div class="card" style="cursor:default; text-align: center; padding: 32px 16px;">
+        <div style="font-size: 3.5rem; margin-bottom: 16px;">📄</div>
+        <h3 style="word-break: break-all; margin-bottom: 12px; font-size: 1.25rem;">${escapeHtml(data.sheet_name)}</h3>
+        <div style="margin-bottom: 24px;">${statusBadge}</div>
+        
+        <p style="font-size: 0.9375rem; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.6;">
+          正確なレイアウトで内容を確認するため、以下のボタンから元のファイルを開いてご確認ください。
+        </p>
+
+        <a href="${downloadUrl}" id="downloadLink" class="btn btn--primary" style="display: block; width: 100%; padding: 16px; font-size: 1.1rem; box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2); margin-bottom: 16px;" download>
+          ⬇️ 契約書ファイルを開く
+        </a>
+        <div style="font-size:0.75rem; color:var(--text-muted);">
           アップロード日: ${data.uploaded_at ? new Date(data.uploaded_at).toLocaleDateString('ja-JP') : '-'}
         </div>
-        <a href="${downloadUrl}" class="btn btn--outline btn--sm" download>
-          ⬇️ Excelファイルをダウンロード
-        </a>
-      </div>
-
-      <div id="scrollNotice" class="contract-view__scroll-notice">
-        ⬇️ 内容を最後までスクロールしてください
-      </div>
-
-      <div class="contract-view__content" id="contractScroll">
-        ${contentHtml}
       </div>
 
       ${isSigned ? `
-        <div class="card card--glow-green" style="text-align:center; cursor:default;">
+        <div class="card card--glow-green" style="text-align:center; cursor:default; margin-top: 24px;">
           <div style="font-size:2rem; margin-bottom:8px;">✅</div>
           <div style="font-weight:600; color:var(--accent-green);">署名完了</div>
           <div style="font-size:0.8125rem; color:var(--text-muted); margin-top:4px;">
@@ -92,43 +73,32 @@ export async function initContractView() {
           </div>
         </div>
       ` : `
-        <button class="btn btn--primary" id="goSignBtn" disabled>
-          🔒 署名するには最後までスクロールしてください
-        </button>
+        <div style="margin-top: 24px;">
+          <button class="btn" id="goSignBtn" style="background-color: var(--accent-green); color: white; border: none; width: 100%; opacity: 0.5;" disabled>
+            🔒 ファイルを開くと署名できます
+          </button>
+        </div>
       `}
     `;
 
-    // スクロール検知
+    // 署名ボタンの制御（ファイルを開いた後に有効化）
     if (!isSigned) {
-      const scrollEl = document.getElementById('contractScroll');
       const signBtn = document.getElementById('goSignBtn');
-      const notice = document.getElementById('scrollNotice');
+      const downloadLink = document.getElementById('downloadLink');
 
-      const checkScroll = () => {
-        const { scrollTop, scrollHeight, clientHeight } = scrollEl;
-        // スクロール可能量が少ない場合（コンテンツが短い場合）は最初から有効
-        if (scrollHeight <= clientHeight + 10) {
-          enableSignButton();
-          return;
-        }
-        if (scrollTop + clientHeight >= scrollHeight - 20) {
-          enableSignButton();
-        }
-      };
-
-      function enableSignButton() {
-        signBtn.disabled = false;
-        signBtn.innerHTML = '✍️ 署名に進む';
-        notice.classList.add('contract-view__scroll-done');
-        notice.innerHTML = '✅ 内容を確認しました';
-      }
-
-      scrollEl.addEventListener('scroll', checkScroll);
-      // 初回チェック（コンテンツが短い場合）
-      setTimeout(checkScroll, 300);
+      downloadLink.addEventListener('click', () => {
+        // タップ後、少し遅延させてボタンを有効化（スマホの挙動対応）
+        setTimeout(() => {
+          signBtn.disabled = false;
+          signBtn.style.opacity = '1';
+          signBtn.innerHTML = '✍️ 内容を確認して署名に進む';
+        }, 1000);
+      });
 
       signBtn.addEventListener('click', () => {
-        navigateTo(`/sign/${currentSheetId}`);
+        if (!signBtn.disabled) {
+          navigateTo(`/sign/${currentSheetId}`);
+        }
       });
     }
 
@@ -140,35 +110,6 @@ export async function initContractView() {
       </div>
     `;
   }
-}
-
-function buildSheetTable(data) {
-  if (!data || data.length === 0) return '<p>データがありません</p>';
-  
-  let html = '<div style="overflow-x: auto; max-width: 100%;"><table class="contract-view__table" style="white-space: pre-wrap; word-break: break-all; min-width: max-content;">';
-  data.forEach((row, i) => {
-    html += '<tr>';
-    if (Array.isArray(row)) {
-      row.forEach(cell => {
-        let val = cell;
-        if (val && typeof val === 'object') {
-          if (val.result !== undefined) val = val.result;
-          else if (val.text !== undefined) val = val.text;
-          else val = JSON.stringify(val);
-        }
-        
-        // 空セルの場合はボーダーを消すなど、少しExcelっぽく見せる工夫
-        const isEmpty = val === null || val === undefined || String(val).trim() === '';
-        const style = isEmpty ? 'border-color: transparent; background: transparent;' : '';
-        const tag = i === 0 ? 'th' : 'td';
-        
-        html += `<${tag} style="${style}">${escapeHtml(String(val ?? ''))}</${tag}>`;
-      });
-    }
-    html += '</tr>';
-  });
-  html += '</table></div>';
-  return html;
 }
 
 function escapeHtml(str) {

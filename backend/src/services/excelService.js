@@ -197,6 +197,42 @@ class ExcelService {
       throw error;
     }
   }
+
+  // 指定したシートのみを含むExcelファイルのバッファ（バイナリデータ）を生成する
+  async getSingleSheetExcelBuffer(filePath, targetSheetName) {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+
+      // 残すシート以外を削除するためのIDリストを作成
+      const sheetIdsToRemove = [];
+      let foundTarget = false;
+
+      workbook.eachSheet((worksheet, sheetId) => {
+        if (worksheet.name === targetSheetName) {
+          foundTarget = true;
+        } else {
+          sheetIdsToRemove.push(sheetId);
+        }
+      });
+
+      if (!foundTarget) {
+        throw new Error(`指定されたシート「${targetSheetName}」が見つかりません`);
+      }
+
+      // 対象以外のシートを削除
+      for (const sheetId of sheetIdsToRemove) {
+        workbook.removeWorksheet(sheetId);
+      }
+
+      // バッファとして書き出す
+      const buffer = await workbook.xlsx.writeBuffer();
+      return buffer;
+    } catch (error) {
+      console.error('❌ 単独シート抽出失敗:', error);
+      throw error;
+    }
+  }
 }
 
 export default new ExcelService();
