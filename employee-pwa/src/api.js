@@ -8,22 +8,20 @@
 const getApiBase = () => {
   const urlParams = new URLSearchParams(window.location.search);
   const paramApi = urlParams.get('api');
-  if (paramApi) {
-    localStorage.setItem('custom_api_url', `http://${paramApi}:5000/api`);
-    return `http://${paramApi}:5000/api`;
+  // IPアドレス（192.168.x.x 等）でアクセスされている場合、そのIPの5000番ポートを自動的に見に行くように調整
+  const hostname = window.location.hostname;
+  const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(hostname);
+  if (isIP) {
+    return `http://${hostname}:5000/api`;
   }
 
-  const customApi = localStorage.getItem('custom_api_url');
-  if (customApi) return customApi;
-
-  // デフォルトの接続先設定
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `http://${window.location.hostname}:5000/api`;
+  // ローカル環境（localhost）
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `http://${hostname}:5000/api`;
   }
   
-  // 自宅PC（192.168.2.105）を優先的に見に行くように設定
-  // もし完全にインターネット版（Render）に戻す場合はここを元に戻します
-  return 'http://192.168.2.105:5000/api';
+  // それ以外（Netlifyなどの本番URL）の場合、Renderのバックエンドサーバーを見に行く
+  return 'https://shigotoyou-backend.onrender.com/api';
 };
 
 export const API_BASE = getApiBase();
