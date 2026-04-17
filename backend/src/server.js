@@ -12,6 +12,9 @@ import pushRoutes from './routes/push.js';
 import lineRoutes from './routes/line.js';
 import adminRoutes from './routes/admin.js';
 
+// タイムゾーン設定（日本時間）
+process.env.TZ = 'Asia/Tokyo';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 

@@ -36,7 +36,7 @@ class ContractController {
 
       // Excel ファイルからシート情報を抽出
       const sheetInfo = await excelService.extractSheets(file.path);
-      console.log('📊 抽出されたシート:', sheetInfo);
+      console.log('\n📊 抽出されたシート:', JSON.stringify(sheetInfo, null, 2));
 
       const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
 
@@ -57,31 +57,23 @@ class ContractController {
         const employeeName = sheet.employeeName || sheet.name;
         const sheetNameExtracted = sheet.sheetNameExtracted; // シート名から抽出した苗字
 
-        console.log(`\n🔍 マッチング開始: "${employeeName}"`);
-        console.log(`  📊 シート情報:`, JSON.stringify({
-          employeeName: sheet.employeeName,
-          sheetNameExtracted: sheet.sheetNameExtracted,
-          sheetName: sheet.name
-        }, null, 2));
-        if (sheetNameExtracted && sheetNameExtracted !== employeeName) {
-          console.log(`  📌 シート名バックアップ: "${sheetNameExtracted}"`);
-        }
-
+        console.log(`\n\n🔍 === シート ${i + 1}: "${sheet.name}" ===`);
+        console.log(`  📝 抽出された従業員名: "${employeeName}"`);
+        console.log(`  📌 シート名から抽出: "${sheetNameExtracted || 'なし'}"`);
+        
         // DB から従業員を検索（複数の方法で試行）
         let user = null;
         const searchName = employeeName.replace(/\s+/g, '').replace(/　+/g, ''); // スペース除去
-        console.log(`  検索対象: "${employeeName}" (スペース除去: "${searchName}")`);
+        
+        console.log(`\n  🔎 マッチング検索開始:`);
+        console.log(`    - 対象: "${employeeName}" (スペース除去: "${searchName}")`);
 
         // 方法1: フルネーム で完全一致
         user = await dbGet(
           `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE full_name = ?`,
           [employeeName]
         );
-        if (user) {
-          console.log(`  ✅ 方法1（完全一致）でマッチ: ${user.full_name}`);
-        } else {
-          console.log(`  ❌ 方法1失敗: full_name = "${employeeName}"で見つかりません`);
-        }
+        console.log(`    1️⃣ full_name = "${employeeName}": ${user ? `✅ ${user.full_name}` : '❌'}`);
 
         // 方法2: フルネーム(スペース除去)で一致
         if (!user) {
@@ -89,23 +81,7 @@ class ContractController {
             `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE REPLACE(REPLACE(full_name, ' ', ''), '　', '') = ?`,
             [searchName]
           );
-          if (user) {
-            console.log(`  ✅ 方法2（スペース除去後の一致）でマッチ: ${user.full_name}`);
-          } else {
-            console.log(`  ❌ 方法2失敗: スペース除去後でも見つかりません`);
-          }
-        }
-
-        // 方法2.5: シート名そのもの（スペース除去）でフルネーム一致
-        if (!user && sheet.name) {
-          const sheetSearchName = sheet.name.replace(/\s+/g, '').replace(/　+/g, '');
-          user = await dbGet(
-            `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE REPLACE(REPLACE(full_name, ' ', ''), '　', '') = ?`,
-            [sheetSearchName]
-          );
-          if (user) {
-            console.log(`  ✅ 方法2.5（シート名完全一致）でマッチ: ${user.full_name}`);
-          }
+          console.log(`    2️⃣ normalized full_name: ${user ? `✅ ${user.full_name}` : '❌'}`);
         }
 
         // 方法3: フルネーム部分マッチ
@@ -114,59 +90,35 @@ class ContractController {
             `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE full_name LIKE ?`,
             [`%${employeeName}%`]
           );
-          if (user) {
-            console.log(`  ✅ 方法3（フルネーム部分マッチ）でマッチ: ${user.full_name}`);
-          } else {
-            console.log(`  ❌ 方法3失敗: フルネーム部分マッチで見つかりません`);
-          }
+          console.log(`    3️⃣ full_name LIKE "%${employeeName}%": ${user ? `✅ ${user.full_name}` : '❌'}`);
         }
 
         // 方法4: ラスト名（苗字）で検索
         if (!user) {
           user = await dbGet(
-            `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE last_name LIKE ? OR last_name = ?`,
-            [`%${employeeName}%`, employeeName]
+            `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE last_name = ? OR last_name LIKE ?`,
+            [employeeName, `%${employeeName}%`]
           );
-          if (user) {
-            console.log(`  ✅ 方法4（苗字マッチ）でマッチ: ${user.full_name}`);
-          } else {
-            console.log(`  ❌ 方法4失敗: 苗字検索で見つかりません`);
-          }
+          console.log(`    4️⃣ last_name match: ${user ? `✅ ${user.full_name}` : '❌'}`);
         }
 
         // 方法5: ファースト名で検索
         if (!user) {
           user = await dbGet(
-            `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE first_name LIKE ? OR first_name = ?`,
-            [`%${employeeName}%`, employeeName]
+            `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE first_name = ? OR first_name LIKE ?`,
+            [employeeName, `%${employeeName}%`]
           );
-          if (user) {
-            console.log(`  ✅ 方法5（名前マッチ）でマッチ: ${user.full_name}`);
-          } else {
-            console.log(`  ❌ 方法5失敗: 名前検索で見つかりません`);
-          }
+          console.log(`    5️⃣ first_name match: ${user ? `✅ ${user.full_name}` : '❌'}`);
         }
 
-        // 方法6: シート名から抽出した苗字を使用した強制マッチング
-        // （重要：シート名が確実な情報源なので、これを優先度最高にする）
-        let userFromSheetName = null;
-        if (sheetNameExtracted) {
-          console.log(`\n  🚨 重要マッチング: シート名から抽出した苗字 "${sheetNameExtracted}" で確実に検索します`);
-
-          userFromSheetName = await dbGet(
+        // 方法6: シート名から抽出した苗字を優先（最終手段）
+        if (!user && sheetNameExtracted) {
+          console.log(`\n  🚨 最後の手段: シート名から抽出した苗字 "${sheetNameExtracted}" で検索`);
+          user = await dbGet(
             `SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE last_name = ?`,
             [sheetNameExtracted]
           );
-
-          if (userFromSheetName) {
-            console.log(`  ✅ シート名マッチング成功: ${userFromSheetName.full_name} (${userFromSheetName.employee_id})`);
-            user = userFromSheetName; // これを優先する
-          } else {
-            console.log(`  ❌ シート名マッチング失敗: last_name = "${sheetNameExtracted}" で見つかりません`);
-            console.log(`    📋 登録済み苗字一括確認:`);
-            const allUsers = await dbQuery('SELECT last_name FROM users GROUP BY last_name');
-            allUsers.forEach(u => console.log(`       - "${u.last_name}"`));
-          }
+          console.log(`    6️⃣ last_name = "${sheetNameExtracted}": ${user ? `✅ ${user.full_name}` : '❌'}`);
         }
 
         if (user) {
@@ -186,7 +138,7 @@ class ContractController {
             status: 'matched'
           });
 
-          console.log(`✅ マッチング成功: ${sheet.name} → ${user.full_name}`);
+          console.log(`\n  ✅✅✅ マッチング成功: ${sheet.name} → ${user.full_name} (${user.employee_id})\n`);
 
           // LINE通知を送信
           if (user.line_user_id) {
@@ -210,20 +162,17 @@ class ContractController {
             }
           }
         } else {
-          const failureDetails = `検索名: "${employeeName}"`;
-          const detailsWithSheetName = sheetNameExtracted && sheetNameExtracted !== employeeName
-            ? `${failureDetails}, シート名から: "${sheetNameExtracted}"`
-            : failureDetails;
+          const failureDetails = `検索名: "${employeeName}"${sheetNameExtracted ? `, シート名: "${sheetNameExtracted}"` : ''}`;
 
           matchedSheets.push({
             sheet_name: sheet.name,
             employee_name: employeeName,
             sheetNameExtracted: sheetNameExtracted,
             status: 'unmatched',
-            message: `従業員が見つかりません: ${detailsWithSheetName}`
+            message: `従業員が見つかりません: ${failureDetails}`
           });
 
-          console.log(`❌ マッチング失敗: ${sheet.name} → ${detailsWithSheetName}`);
+          console.log(`\n  ❌❌❌ マッチング失敗: "${employeeName}" または "${sheetNameExtracted}" が該当する従業員が見つかりません\n`);
         }
       }
 
