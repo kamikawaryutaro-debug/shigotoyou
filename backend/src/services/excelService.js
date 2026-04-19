@@ -13,52 +13,50 @@ class ExcelService {
         const worksheet = workbook.worksheets[i];
         const sheetName = worksheet.name;
 
-        // 複数のセルから従業員名を抽出（優先度順）
-        let employeeName = null;
-        const cellsToCheck = ['CI2', 'P4', 'A4', 'B4', 'A3', 'B3', 'A2', 'B2', 'A5', 'B5'];
-        
+        // 複数のセルから従業員名を抽出
+        let candidates = [];
+        const cellsToCheck = ['P4', 'CI2', 'A4', 'B4', 'A3', 'B3', 'A2', 'B2', 'A5', 'B5'];
+
         console.log(`\n🔎 シート ${i + 1} "${sheetName}" の従業員名を検索中...`);
-        
+
         for (const cellRef of cellsToCheck) {
           try {
             const cell = worksheet.getCell(cellRef);
             let cellValue = '';
-            
-            // セルの値を取得（計算結果も含む）
+
             if (cell) {
-              // 1. 値を直接取得
-              if (cell.value) {
+              if (cell.value && typeof cell.value !== 'object') {
                 cellValue = String(cell.value).trim();
-              }
-              // 2. 計算結果を取得（VLOOKUP等の式の場合）
-              else if (cell.result) {
+              } else if (cell.result) {
                 cellValue = String(cell.result).trim();
-              }
-              // 3. リッチテキストの場合
-              else if (cell.richText) {
-                cellValue = cell.richText.map(rt => rt.text || '').join('').trim();
+              } else if (cell.value && cell.value.richText) {
+                cellValue = cell.value.richText.map(rt => rt.text || '').join('').trim();
               }
             }
-            
-            console.log(`  📍 セル ${cellRef}: "${cellValue}"`);
-            
-            // 従業員名として有効か判断
-            if (cellValue && cellValue.length > 0 && cellValue.length < 30) {
-              // 従業員名っぽいかチェック
-              const hasKana = /[\u3041-\u3096\u30A1-\u30F6\u4E00-\u9FFF]/.test(cellValue);
-              const isNotDocument = !cellValue.includes('契約') && !cellValue.includes('様式') && 
-                                   !cellValue.includes('雇用') && !cellValue.includes('合意') &&
-                                   !cellValue.includes('VLOOKUP') && !cellValue.includes('#REF');
-              
-              if (hasKana && isNotDocument && cellValue.length >= 2 && cellValue !== 'N/A' && cellValue !== 'FALSE') {
-                employeeName = cellValue;
-                console.log(`  ✅ セル ${cellRef} から従業員名を検出: "${employeeName}"`);
-                break;
+
+            if (cellValue && cellValue.length >= 2 && cellValue.length < 30) {
+              const hasKanji = /[\u4E00-\u9FFF]/.test(cellValue);
+              const hasKana = /[\u3041-\u3096\u30A1-\u30F6]/.test(cellValue);
+              const isNotDocument = !cellValue.includes('契約') && !cellValue.includes('様式') &&
+                !cellValue.includes('雇用') && !cellValue.includes('合意') &&
+                !cellValue.includes('VLOOKUP') && !cellValue.includes('#REF');
+
+              if ((hasKanji || hasKana) && isNotDocument && cellValue !== 'N/A' && cellValue !== 'FALSE') {
+                candidates.push({
+                  value: cellValue,
+                  score: (hasKanji ? 10 : 0) + cellValue.length
+                });
+                console.log(`  📍 候補発見 (${cellRef}): "${cellValue}" (Score: ${(hasKanji ? 10 : 0) + cellValue.length})`);
               }
             }
-          } catch (err) {
-            // 続行
-          }
+          } catch (err) { }
+        }
+
+        // スコアが最も高い候補を選択
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.score - a.score);
+          employeeName = candidates[0].value;
+          console.log(`  ✅ 最良の候補を選択: "${employeeName}"`);
         }
 
         // シート名から括弧内の名前を常に抽出（バックアップ用）
@@ -108,7 +106,7 @@ class ExcelService {
       const imported = await import('xlsx');
       const XLSX = imported.default || imported;
       const workbook = XLSX.readFile(filePath);
-      
+
       const worksheet = workbook.Sheets[sheetName];
       if (!worksheet) {
         throw new Error(`シート ${sheetName} が見つかりません`);
@@ -132,7 +130,7 @@ class ExcelService {
     try {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(filePath);
-      
+
       const worksheet = workbook.worksheets[sheetIndex];
       if (!worksheet) {
         throw new Error(`シート ${sheetIndex} が見つかりません`);
@@ -154,23 +152,23 @@ class ExcelService {
         for (let colNumber = 1; colNumber <= maxCols; colNumber++) {
           const cell = row.getCell(colNumber);
           let cellValue = '';
-          
+
           if (cell && cell.value !== null && cell.value !== undefined) {
-             const val = cell.value;
-             // 計算式の場合
-             if (typeof val === 'object') {
-                if (val.result !== undefined) {
-                   cellValue = val.result;
-                } else if (val.richText) {
-                   cellValue = val.richText.map(rt => rt.text).join('');
-                } else if (val.text !== undefined) {
-                   cellValue = val.text;
-                } else {
-                   cellValue = ''; // 解釈不能なオブジェクトは空文字に
-                }
-             } else {
-                cellValue = val;
-             }
+            const val = cell.value;
+            // 計算式の場合
+            if (typeof val === 'object') {
+              if (val.result !== undefined) {
+                cellValue = val.result;
+              } else if (val.richText) {
+                cellValue = val.richText.map(rt => rt.text).join('');
+              } else if (val.text !== undefined) {
+                cellValue = val.text;
+              } else {
+                cellValue = ''; // 解釈不能なオブジェクトは空文字に
+              }
+            } else {
+              cellValue = val;
+            }
           }
           rowData.push(cellValue);
         }
