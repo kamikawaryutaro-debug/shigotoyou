@@ -60,7 +60,8 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error(err);
-      message.error(`${file.name} アップロード失敗`);
+      const errorMsg = err.response?.data?.error || 'サーバーとの通信に失敗しました';
+      message.error(`${file.name} アップロード失敗: ${errorMsg}`);
       onError(err);
     }
   };

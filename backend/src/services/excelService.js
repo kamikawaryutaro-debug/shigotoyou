@@ -14,6 +14,7 @@ class ExcelService {
         const sheetName = worksheet.name;
 
         // 複数のセルから従業員名を抽出
+        let employeeName = '';
         let candidates = [];
         const cellsToCheck = ['P4', 'CI2', 'A4', 'B4', 'A3', 'B3', 'A2', 'B2', 'A5', 'B5'];
 
