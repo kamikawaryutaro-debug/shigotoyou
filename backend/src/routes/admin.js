@@ -280,6 +280,35 @@ router.delete('/users/:id', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/users/:id/reset-password
+ * 従業員パスワードリセット（初回ログイン状態に戻す）
+ */
+router.post('/users/:id/reset-password', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await dbGet('SELECT id, full_name, employee_id FROM users WHERE id = ?', [id]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: '従業員が見つかりません' });
+    }
+
+    await dbRun(
+      'UPDATE users SET password_hash = NULL, updated_at = ? WHERE id = ?',
+      [new Date().toISOString(), id]
+    );
+
+    console.log(`🔑 パスワードリセット: ${user.full_name} (${user.employee_id})`);
+
+    res.json({
+      success: true,
+      message: `${user.full_name} のパスワードをリセットしました。次回ログイン時に新しいパスワードが設定されます。`
+    });
+  } catch (error) {
+    console.error('❌ パスワードリセットエラー:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * DELETE /api/admin/contracts/:id
  * 契約書削除
  */

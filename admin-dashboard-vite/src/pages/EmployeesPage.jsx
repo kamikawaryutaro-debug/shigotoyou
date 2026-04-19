@@ -5,7 +5,7 @@ import {
 import {
   UserOutlined, PlusOutlined, EditOutlined, DeleteOutlined,
   ReloadOutlined, SearchOutlined, CheckCircleOutlined,
-  CloseCircleOutlined, MessageOutlined,
+  CloseCircleOutlined, MessageOutlined, LockOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import API_BASE from '../api-config';
@@ -94,6 +94,17 @@ export default function EmployeesPage() {
     }
   };
 
+  const handleResetPassword = async (record) => {
+    try {
+      const res = await axios.post(`${API_BASE}/admin/users/${record.id}/reset-password`);
+      if (res.data.success) {
+        message.success(`${record.full_name} のパスワードをリセットしました。次回ログイン時に新しいパスワードを設定できます。`);
+      }
+    } catch (error) {
+      message.error('パスワードリセットに失敗しました');
+    }
+  };
+
   const filteredUsers = users.filter(u =>
     !searchText ||
     u.full_name?.includes(searchText) ||
@@ -174,10 +185,19 @@ export default function EmployeesPage() {
     {
       title: 'アクション',
       key: 'action',
-      width: 100,
+      width: 150,
       render: (_, record) => (
         <Space size="small">
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} title="編集" />
+          <Popconfirm
+            title={`${record.full_name} のパスワードをリセットしますか？\n次回ログイン時に新しいパスワードを設定できます。`}
+            onConfirm={() => handleResetPassword(record)}
+            okText="リセット"
+            cancelText="キャンセル"
+            okType="primary"
+          >
+            <Button type="text" size="small" icon={<LockOutlined />} title="パスワードリセット" style={{ color: '#1890ff' }} />
+          </Popconfirm>
           <Popconfirm
             title="この従業員を無効化しますか？"
             onConfirm={() => handleDelete(record)}
