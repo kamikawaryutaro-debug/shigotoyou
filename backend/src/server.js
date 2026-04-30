@@ -88,7 +88,7 @@ const startServer = async () => {
     const db = await initializeDatabase();
     console.log('✅ データベース接続成功');
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n🚀 契約書電子承認システム API サーバー起動`);
       console.log(`📍 ポート: ${PORT}`);
       console.log(`🌐 URL: http://localhost:${PORT}`);
