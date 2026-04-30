@@ -171,7 +171,10 @@ router.get('/contracts/:sheetId/download', async (req, res) => {
 
     if (sheet.file_path === 'multiple_files' && sheet.sheet_name.includes('||')) {
       const [displayName, fileNameStr] = sheet.sheet_name.split('||');
-      const actualFilePath = path.join(process.cwd(), 'uploads', fileNameStr);
+      const uploadsDir = process.env.UPLOADS_PATH 
+        ? path.resolve(process.cwd(), process.env.UPLOADS_PATH)
+        : path.join(process.cwd(), 'uploads');
+      const actualFilePath = path.join(uploadsDir, fileNameStr);
       if (!fs.existsSync(actualFilePath)) {
         return res.status(404).json({ success: false, error: 'PDFファイルが見つかりません。' });
       }
@@ -334,7 +337,10 @@ router.get('/contracts/:sheetId/pdf', async (req, res) => {
     try {
       if (sheet.file_path === 'multiple_files' && sheet.sheet_name.includes('||')) {
         const [displayName, fileNameStr] = sheet.sheet_name.split('||');
-        const actualFilePath = path.join(process.cwd(), 'uploads', fileNameStr);
+        const uploadsDir = process.env.UPLOADS_PATH 
+          ? path.resolve(process.cwd(), process.env.UPLOADS_PATH)
+          : path.join(process.cwd(), 'uploads');
+        const actualFilePath = path.join(uploadsDir, fileNameStr);
         if (!fs.existsSync(actualFilePath)) {
           return res.status(404).json({ success: false, error: 'PDFファイルが見つかりません。' });
         }

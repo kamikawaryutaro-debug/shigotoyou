@@ -113,18 +113,14 @@ class ContractController {
 
           if (user) {
             // contract_sheets.sheet_name にはファイルパスを保存してPDFを開けるようにする、または別にカラムを作る。
-            // sheet_name は画面表示名として使うので拡張子付きか抜きにする。 PDF表示用に full_path も保持するハックとして sheet_name の代わりに sheet_indexを活用するか...
-            // または、この実装では一旦 file_path は使わず sheet_name に保存し、 employee.js 側で currentPdf.path を参照するため DB を拡張？
-            // 簡単のため、すでに存在する `content_html` 的なフィールドか、`sheet_name` に文字列を入れておく？いや、`sheet_name` には画面用の名を入れて、実ファイルは `contracts.file_path` が使われる。
-            // 複数ファイルがある場合、個別の `file_path` をどう保存するか？実はDBスキーマに `contract_sheets` の `sheet_name` にパスを含める手がある。
-            // ひとまず `sheet_index` にファイル名(フルパス)の相対部分か絶対パス、または別DB改修が不要な方法にする。 `contract_sheets.custom_file_path`（なければエラーになる）。
-            // DBを見ると `contract_sheets` には `sheet_name`, `sheet_index`, `status` がある。ここでは `sheet_name` には元のファイル名を入れ、`sheet_index` に文字列でフルパスを入れちゃおう（SQLiteなら型無視できるが）。
-            // 実際は `uploads/xxx.pdf` にあるので、ファイルパス自体は currentPdf.path。
-            // とりあえず、`sheet_index` に保存しよう。もしくは、後から取得できるように `sheet_name` を元に探す。
+          
+          const user = await this.findUserByNameMatch(nameWithoutExt, null);
 
-            // 安全な方法: sheet_index に JSONやファイル名を入れておく。実は integer フィールドかもしれない。
-            // 最善のアプローチ： `contracts.file_path` が複数対応してないのであれば、別のファイルに退避するか、今回は `sheet_index` に i を入れつつ、あとでファイルを取得できるようにする。
-            // `currentPdf.filename` に multerで生成された実ファイル名が入っている。これを `sheet_name` に「画面用の名前||ファイル名」として入れる。
+          if (user) {
+            const uploadsDir = process.env.UPLOADS_PATH || 'uploads';
+            const file_path = path.join(uploadsDir, currentPdf.filename);
+
+            // PDFファイルパスを保持するため sheet_name にフルパスを埋め込むなどの工夫が必要な場合
             const combinedSheetName = `${nameWithoutExt}||${currentPdf.filename}`;
 
             await dbRun(

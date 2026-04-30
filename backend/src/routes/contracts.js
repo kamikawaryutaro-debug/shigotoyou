@@ -7,7 +7,9 @@ import contractController from '../controllers/contractController.js';
 import fs from 'fs';
 
 const router = express.Router();
-const uploadsDir = path.join(process.cwd(), 'uploads');
+const uploadsDir = process.env.UPLOADS_PATH 
+  ? path.resolve(process.cwd(), process.env.UPLOADS_PATH)
+  : path.join(process.cwd(), 'uploads');
 
 // アップロード用ディレクトリが存在しない場合は作成
 if (!fs.existsSync(uploadsDir)) {
