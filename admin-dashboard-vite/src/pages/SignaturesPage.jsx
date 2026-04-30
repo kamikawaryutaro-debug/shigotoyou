@@ -4,7 +4,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined, ClockCircleOutlined, EyeOutlined,
-  UserOutlined, ReloadOutlined, EditOutlined,
+  UserOutlined, ReloadOutlined, EditOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import API_BASE from '../api-config';
@@ -15,6 +15,163 @@ export default function SignaturesPage() {
   const [activeTab, setActiveTab] = useState('all');
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedSignature, setSelectedSignature] = useState(null);
+
+  const handleDownloadPdf = async (sheetId) => {
+    const hide = message.loading('PDFを生成中...', 0);
+    let container = null;
+    try {
+      const res = await axios.get(`${API_BASE}/admin/signatures/${sheetId}`);
+      if (!res.data.success || !res.data.data.htmlContent) {
+        throw new Error('契約書データの取得に失敗しました');
+      }
+
+      const { sheet, htmlContent } = res.data.data;
+
+      // PDF生成用の臨時コンテナ
+      container = document.createElement('div');
+      container.id = 'pdf-temp-container';
+      
+      // html2canvasが描画できるように表示状態にするが、z-indexで背面に隠して見えないようにする
+      container.style.position = 'absolute';
+      container.style.top = '0';
+      container.style.left = '0';
+      container.style.zIndex = '-9999';
+      container.style.background = 'white';
+      container.style.visibility = 'visible';
+
+      const contentDiv = document.createElement('div');
+      contentDiv.style.width = 'max-content';
+      contentDiv.style.padding = '20px';
+      contentDiv.style.background = 'white';
+      contentDiv.style.fontFamily = 'serif';
+      contentDiv.style.color = 'black';
+
+      // バックエンドが署名画像を含むHTMLを返すため、そのまま使用する
+      contentDiv.innerHTML = `
+        <div style="margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; width: 100%;">
+          <h1 style="font-size: 18px; margin: 0;">${sheet.file_name}</h1>
+          <p style="margin: 5px 0 0 0; color: #666;">署名済みドキュメント (管理番号: ${sheet.contract_id})</p>
+        </div>
+        <div class="pdf-content" style="padding-bottom: 20px;">
+          ${htmlContent}
+        </div>
+        <div style="margin-top: 20px; font-size: 9px; color: #aaa; text-align: center; width: 100%;">
+          このドキュメントは「電子承認システム」によって生成されました。
+        </div>
+      `;
+
+      container.appendChild(contentDiv);
+      document.body.appendChild(container);
+
+      // 1枚に確実に収めるためのサイズ計算（A4横: 297x210, マージン各10mm、安全マージン2%）
+      const pdfInnerWidth = 297 - 20; // 277mm
+      const pdfInnerHeight = 210 - 20; // 190mm
+      const targetRatio = (pdfInnerWidth / pdfInnerHeight) * 1.02;
+
+      const rect = contentDiv.getBoundingClientRect();
+      const actualWidth = rect.width;
+      const actualHeight = rect.height;
+      const currentRatio = actualWidth / actualHeight;
+
+      let finalWidth = actualWidth;
+
+      if (currentRatio < targetRatio) {
+        // 高さがオーバーする場合は、横幅を左右paddingで広げてA4比率にし、1ページに強制フィットさせる
+        finalWidth = actualHeight * targetRatio;
+        const padX = (finalWidth - actualWidth) / 2;
+        contentDiv.style.marginLeft = `${padX}px`;
+        contentDiv.style.marginRight = `${padX}px`;
+      }
+      
+      container.style.width = `${finalWidth}px`;
+
+      // html2canvasが確実に画像をキャプチャできるよう、すべての画像のロード完了を待つ
+      const images = Array.from(container.querySelectorAll('img'));
+      await Promise.all(images.map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(resolve => {
+          img.onload = resolve;
+          img.onerror = resolve; // エラーでも止まらないようにする
+        });
+      }));
+
+      // html2pdfが処理を完了するまで少し待機（DOMのレンダリング完了待ち）
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // html2canvasを手動で実行し、生成されたCanvasに直接画像を合成する（html2canvasの絶対配置バグ回避のため）
+      const canvas = await window.html2canvas(container, {
+        scale: 2, 
+        useCORS: true, 
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: Math.ceil(finalWidth),
+        width: Math.ceil(finalWidth),
+        windowHeight: Math.ceil(actualHeight),
+        height: Math.ceil(actualHeight)
+      });
+
+      const ctx = canvas.getContext('2d');
+      const previewContainer = container.querySelector('.excel-preview-container');
+      
+      if (previewContainer) {
+        const rectContainer = container.getBoundingClientRect();
+        const rectPreview = previewContainer.getBoundingClientRect();
+        const offsetX = rectPreview.left - rectContainer.left;
+        const offsetY = rectPreview.top - rectContainer.top;
+
+        // 絶対配置されている画像（ハンコや署名）を抽出してCanvasに上書き描画
+        const absoluteImages = images.filter(img => img.style.position === 'absolute');
+        for (const img of absoluteImages) {
+          const left = parseFloat(img.style.left) || 0;
+          const top = parseFloat(img.style.top) || 0;
+          
+          let drawWidth = parseFloat(img.style.width) || img.naturalWidth;
+          let drawHeight = parseFloat(img.style.height) || img.naturalHeight;
+          
+          // object-fit: contain や max-height の反映
+          if (img.style.maxHeight && img.style.height === '') {
+            const maxH = parseFloat(img.style.maxHeight);
+            const ratio = img.naturalWidth / img.naturalHeight;
+            if (img.naturalHeight > maxH) {
+              drawHeight = maxH;
+              drawWidth = maxH * ratio;
+            } else {
+              drawHeight = img.naturalHeight;
+              drawWidth = img.naturalWidth;
+            }
+          }
+          
+          const finalX = (offsetX + left) * 2;
+          const finalY = (offsetY + top) * 2;
+          
+          ctx.globalAlpha = parseFloat(img.style.opacity) || 1.0;
+          ctx.drawImage(img, finalX, finalY, drawWidth * 2, drawHeight * 2);
+          ctx.globalAlpha = 1.0; // リセット
+        }
+      }
+
+      const opt = {
+        margin: [10, 10],
+        filename: `signed_${sheet.full_name || 'contract'}_${sheet.sheet_name}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+      };
+
+      // 合成済みのCanvasから直接PDFを生成
+      await window.html2pdf().set(opt).from(canvas).save();
+      message.success('PDFが保存されました');
+    } catch (error) {
+      console.error(error);
+      message.error(`エラー: ${error.response?.data?.error || error.message || '不明なエラー'}`);
+    } finally {
+      // 処理完了後にコンテナを確実に削除
+      if (container && container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
+      hide();
+    }
+  };
 
   useEffect(() => {
     fetchSignatures(activeTab);
@@ -163,7 +320,21 @@ export default function SignaturesPage() {
         title="署名詳細"
         open={detailModalVisible}
         onCancel={() => { setDetailModalVisible(false); setSelectedSignature(null); }}
-        footer={[<Button key="close" onClick={() => setDetailModalVisible(false)}>閉じる</Button>]}
+        footer={[
+          <Button key="close" onClick={() => setDetailModalVisible(false)}>
+            閉じる
+          </Button>,
+          selectedSignature?.sheet?.status === 'signed' && (
+            <Button
+              key="download"
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={() => handleDownloadPdf(selectedSignature.sheet.id)}
+            >
+              署名した内容のPDFダウンロード
+            </Button>
+          )
+        ]}
         width={700}
       >
         {selectedSignature && (

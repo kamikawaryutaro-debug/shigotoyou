@@ -3,6 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { dbRun, dbQuery, dbGet } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
 import excelService from '../services/excelService.js';
+import pdfService from '../services/pdfService.js';
+import imageService from '../services/imageService.js';
+import path from 'path';
+import fs from 'fs';
 
 const router = express.Router();
 
@@ -81,8 +85,14 @@ router.get('/contracts/:sheetId', async (req, res) => {
 
     // ExcelからシートデータをHTMLとして取得（見た目そのまま）
     let sheetData = null;
+    let isDirectPdf = false;
+    let displaySheetName = sheet.sheet_name;
+
     try {
-      if (sheet.file_path && sheet.sheet_name) {
+      if (sheet.file_path === 'multiple_files' && sheet.sheet_name.includes('||')) {
+        isDirectPdf = true;
+        displaySheetName = sheet.sheet_name.split('||')[0];
+      } else if (sheet.file_path && sheet.sheet_name) {
         sheetData = await excelService.getSheetHtml(sheet.file_path, sheet.sheet_name);
       }
     } catch (err) {
@@ -108,19 +118,29 @@ router.get('/contracts/:sheetId', async (req, res) => {
       );
     }
 
+    // 署名データを取得
+    let signature = null;
+    if (sheet.status === 'signed' || sheet.status === 'completed') {
+      signature = await dbGet('SELECT signature_data FROM signatures WHERE contract_sheet_id = ? ORDER BY signed_at DESC LIMIT 1', [sheetId]);
+    }
+
     res.json({
       success: true,
       data: {
         sheet_id: sheet.id,
         contract_id: sheet.contract_id,
-        sheet_name: sheet.sheet_name,
+        sheet_name: displaySheetName,
         file_name: sheet.file_name,
         status: sheet.status,
         status_text: getStatusText(sheet.status),
         uploaded_at: sheet.uploaded_at,
         viewed_at: sheet.viewed_at || new Date().toISOString(),
         signed_at: sheet.signed_at,
-        sheet_data: sheetData
+        sheet_data: {
+          html: sheetData?.html || null
+        },
+        signature_data: signature?.signature_data || null,
+        is_direct_pdf: isDirectPdf
       }
     });
   } catch (error) {
@@ -149,18 +169,36 @@ router.get('/contracts/:sheetId/download', async (req, res) => {
       return res.status(404).json({ success: false, error: 'ファイルが見つかりません。' });
     }
 
+    if (sheet.file_path === 'multiple_files' && sheet.sheet_name.includes('||')) {
+      const [displayName, fileNameStr] = sheet.sheet_name.split('||');
+      const actualFilePath = path.join(process.cwd(), 'uploads', fileNameStr);
+      if (!fs.existsSync(actualFilePath)) {
+        return res.status(404).json({ success: false, error: 'PDFファイルが見つかりません。' });
+      }
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(displayName)}.pdf"`);
+      return res.sendFile(actualFilePath);
+    }
+
     try {
       // 指定したシートのみを含む新しいExcelのバッファを生成
       const buffer = await excelService.getSingleSheetExcelBuffer(sheet.file_path, sheet.sheet_name);
-      
+
       const fileName = `${sheet.sheet_name}_${sheet.file_name}`;
+      const isPreview = req.query.preview === 'true';
+      const disposition = isPreview ? 'inline' : 'attachment';
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(fileName)}"`);
       res.send(buffer);
     } catch (excelError) {
       console.warn('⚠️ 個別シート抽出失敗、フォールバックとして元ファイルを送信します:', excelError.message);
-      res.download(sheet.file_path, sheet.file_name);
+      if (req.query.preview === 'true') {
+        res.setHeader('Content-Disposition', 'inline');
+        res.sendFile(sheet.file_path);
+      } else {
+        res.download(sheet.file_path, sheet.file_name);
+      }
     }
   } catch (error) {
     console.error('❌ ファイルダウンロードエラー:', error);
@@ -273,8 +311,98 @@ router.post('/contracts/:sheetId/sign', async (req, res) => {
   }
 });
 
-// 注意: 以前のPDF変換や画像表示の試行（LibreOffice等が必要なもの）は削除されました
-// 現在は「方針案A（単独シートのエクセルを直接ダウンロード）」に統一されています。
+/**
+ * GET /api/employee/contracts/:sheetId/pdf
+ * ExcelファイルをPDFに変換して返す
+ */
+router.get('/contracts/:sheetId/pdf', async (req, res) => {
+  try {
+    const { sheetId } = req.params;
+
+    const sheet = await dbGet(
+      `SELECT c.file_path, c.file_name, cs.sheet_name
+       FROM contract_sheets cs
+       JOIN contracts c ON cs.contract_id = c.id
+       WHERE cs.id = ? AND cs.user_id = ?`,
+      [sheetId, req.user.id]
+    );
+
+    if (!sheet || !sheet.file_path) {
+      return res.status(404).json({ success: false, error: 'ファイルが見つかりません。' });
+    }
+
+    try {
+      if (sheet.file_path === 'multiple_files' && sheet.sheet_name.includes('||')) {
+        const [displayName, fileNameStr] = sheet.sheet_name.split('||');
+        const actualFilePath = path.join(process.cwd(), 'uploads', fileNameStr);
+        if (!fs.existsSync(actualFilePath)) {
+          return res.status(404).json({ success: false, error: 'PDFファイルが見つかりません。' });
+        }
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(displayName)}.pdf"`);
+        return res.sendFile(actualFilePath);
+      }
+
+      const pdfBuffer = await pdfService.convertExcelToPdf(sheet.file_path);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(sheet.file_name.replace('.xlsx', '.pdf'))}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error('❌ PDF変換エラー:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        details: 'LibreOfficeが正しくインストールされているか確認してください。'
+      });
+    }
+  } catch (error) {
+    console.error('❌ PDFエンドポイントエラー:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/employee/contracts/:sheetId/images
+ * ExcelファイルをPNG画像に変換して返す（複数ページ対応）
+ */
+router.get('/contracts/:sheetId/images', async (req, res) => {
+  try {
+    const { sheetId } = req.params;
+
+    const sheet = await dbGet(
+      `SELECT c.file_path, c.file_name 
+       FROM contract_sheets cs
+       JOIN contracts c ON cs.contract_id = c.id
+       WHERE cs.id = ? AND cs.user_id = ?`,
+      [sheetId, req.user.id]
+    );
+
+    if (!sheet || !sheet.file_path) {
+      return res.status(404).json({ success: false, error: 'ファイルが見つかりません。' });
+    }
+
+    try {
+      console.log(`📄 画像化処理開始: ${sheet.file_path}`);
+      const images = await imageService.getAllPagesAsBase64(sheet.file_path);
+
+      res.json({
+        success: true,
+        data: images,
+        pageCount: images.length
+      });
+    } catch (error) {
+      console.error('❌ 画像化変換エラー:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        details: 'LibreOfficeまたはGhostscriptが正しくインストールされているか確認してください。'
+      });
+    }
+  } catch (error) {
+    console.error('❌ 画像化エンドポイントエラー:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // ヘルパー関数
 function getStatusText(status) {

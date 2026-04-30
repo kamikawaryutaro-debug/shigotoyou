@@ -1,6 +1,9 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { dbRun, dbQuery, dbGet } from '../db.js';
+import pdfService from '../services/pdfService.js';
+import excelService from '../services/excelService.js';
+import path from 'path';
 
 const router = express.Router();
 
@@ -106,6 +109,7 @@ router.get('/signatures/:sheetId', async (req, res) => {
         cs.*,
         c.contract_id,
         c.file_name,
+        c.file_path,
         c.uploaded_at,
         u.full_name,
         u.employee_id,
@@ -129,15 +133,83 @@ router.get('/signatures/:sheetId', async (req, res) => {
       [sheetId]
     );
 
+    // 契約書のHTML内容を取得（署名画像があれば埋め込み）
+    let htmlContent = null;
+    try {
+      if (sheet.file_path && sheet.sheet_name && sheet.file_path !== 'multiple_files') {
+        // 署名データがあればHTML生成時に埋め込む
+        const sigData = (signature && signature.signature_data) ? signature.signature_data : null;
+        const result = await excelService.getSheetHtml(sheet.file_path, sheet.sheet_name, sigData);
+        htmlContent = result.html;
+      }
+    } catch (err) {
+      console.warn('⚠️ 管理画面用HTML取得失敗:', err.message);
+    }
+
     res.json({
       success: true,
       data: {
         sheet,
-        signature: signature || null
+        signature: signature || null,
+        htmlContent: htmlContent
       }
     });
   } catch (error) {
     console.error('❌ 署名詳細取得エラー:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/signatures/:sheetId/pdf
+ * 署名を合成したPDFをダウンロード
+ */
+router.get('/signatures/:sheetId/pdf', async (req, res) => {
+  try {
+    const { sheetId } = req.params;
+
+    // シート情報と元のExcelパスを取得
+    const sheet = await dbGet(
+      `SELECT cs.*, c.file_path, c.file_name, u.full_name
+       FROM contract_sheets cs
+       JOIN contracts c ON cs.contract_id = c.id
+       LEFT JOIN users u ON cs.user_id = u.id
+       WHERE cs.id = ?`,
+      [sheetId]
+    );
+
+    if (!sheet) {
+      return res.status(404).json({ success: false, error: '署名情報が見つかりません' });
+    }
+
+    if (sheet.status !== 'signed') {
+      return res.status(400).json({ success: false, error: 'この書類はまだ署名されていません' });
+    }
+
+    // 署名データ取得
+    const signature = await dbGet(
+      `SELECT signature_data FROM signatures WHERE contract_sheet_id = ? ORDER BY signed_at DESC LIMIT 1`,
+      [sheetId]
+    );
+
+    if (!signature || !signature.signature_data) {
+      return res.status(404).json({ success: false, error: '署名画像が見つかりません' });
+    }
+
+    // 署名済みPDFを生成
+    const pdfBuffer = await pdfService.createSignedPdf(
+      sheet.file_path,
+      sheet.sheet_name,
+      signature.signature_data
+    );
+
+    const downloadName = `signed_${sheet.full_name || 'employee'}_${sheet.file_name.replace('.xlsx', '.pdf')}`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadName)}"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('❌ 署名済みPDF生成エラー:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

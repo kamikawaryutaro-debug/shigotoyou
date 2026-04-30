@@ -19,6 +19,42 @@
 
 ---
 
+## [1.1.0] - 2026-04-29
+
+### Fixed - 契約書表示の改善（スケール縮小方式）
+
+#### 概要
+従業員PWAの契約書プレビューを、外部ソフト（LibreOffice等）に依存せず、
+**ブラウザ内でExcelのレイアウトを忠実に再現**するよう改修。
+
+#### 技術詳細（元に戻す際の参考）
+
+**方式: スケール縮小表示（Scale-to-Fit）**
+1. バックエンド `excelService.getSheetHtml()` でExcelの列幅・行高さ・結合セル・罫線・画像を忠実にHTMLテーブルとして出力
+2. フロントエンド `contract-view.js` でテーブルの自然な幅を測定し、`transform: scale()` で画面幅に自動縮小
+
+**変更ファイル:**
+- `backend/src/services/excelService.js`
+  - `getSheetHtml()`: テーブル幅を列幅合計から計算し `min-width` と `width` に設定
+  - `_getCellStyles()`: `white-space: nowrap`（デフォルト）、`overflow: hidden` を削除
+  - `_formatValue()`: Excelの日付シリアル値を正しい日付に変換する機能を追加
+- `employee-pwa/src/pages/contract-view.js`
+  - `initContractView()`: テーブル描画後にscale係数を計算しCSSで縮小表示
+- `employee-pwa/src/styles/index.css`
+  - `.excel-preview-container`: `overflow-x: auto` 追加
+  - `#contract-table td`: `line-height: 1.4` 追加
+
+**重要な設定値:**
+```
+フォントサイズ: 10pt（excelService.js内）
+列幅計算式: col.width * 7.5 + 5（px）
+行高計算式: row.height * 1.33（px）
+デフォルト列幅: 64px
+デフォルト行高: 20px
+```
+
+---
+
 ## [1.0.0] - 2026-03-14
 
 ### Added - 初期リリース

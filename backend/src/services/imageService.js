@@ -27,7 +27,18 @@ class ImageService {
       let command;
 
       if (isWindows) {
-        command = `soffice --headless --convert-to pdf --outdir "${tempDir}" "${excelPath}"`;
+        // 標準的なインストールパスを確認
+        const standardPath = 'C:\\Program Files\\LibreOffice\\program\\soffice.exe';
+        
+        // ファイル存在確認
+        try {
+          const fs = await import('fs/promises');
+          await fs.access(standardPath);
+        } catch (e) {
+          throw new Error('LibreOffice が見つかりません。画像生成（PNG変換）機能は無効です。');
+        }
+
+        command = `"${standardPath}" --headless --convert-to pdf --outdir "${tempDir}" "${excelPath}"`;
       } else {
         command = `libreoffice --headless --convert-to pdf --outdir "${tempDir}" "${excelPath}"`;
       }
@@ -83,10 +94,24 @@ class ImageService {
       console.log(`🖼️ PDF→PNG変換中: ${pdfPath}`);
 
       // Ghostscript コマンドでPDFを画像化
-      // -dNOPAUSE: 各ページ処理後に一時停止しない
-      // -r150: 解像度150DPI（高品質）
-      // -sDEVICE=png16m: PNG出力
-      const gsCommand = `gswin64c -dNOPAUSE -dBATCH -r150 -sDEVICE=png16m -sOutputFile="${imagePattern}" "${pdfPath}"`;
+      const isWindows = process.platform === 'win32';
+      let gsCommand;
+
+      if (isWindows) {
+        const gsPath = 'C:\\Program Files\\gs\\gs10.07.0\\bin\\gswin64c.exe';
+        
+        // ファイル存在確認
+        try {
+          const fs = await import('fs/promises');
+          await fs.access(gsPath);
+        } catch (e) {
+          throw new Error('Ghostscript (gs) が見つかりません。PDFから画像への変換は無効です。');
+        }
+
+        gsCommand = `"${gsPath}" -dNOPAUSE -dBATCH -r150 -sDEVICE=png16m -sOutputFile="${imagePattern}" "${pdfPath}"`;
+      } else {
+        gsCommand = `gs -dNOPAUSE -dBATCH -r150 -sDEVICE=png16m -sOutputFile="${imagePattern}" "${pdfPath}"`;
+      }
 
       console.log(`🔧 Ghostscript実行中...`);
       const { stdout, stderr } = await execPromise(gsCommand, {
@@ -127,8 +152,8 @@ class ImageService {
 
       if (error.message.includes('ENOENT') || error.message.includes('not found')) {
         throw new Error(
-          'Ghostscriptがインストールされていません。' +
-          'Windows: https://www.ghostscript.com/download/gsdnld.html からダウンロードしてください。'
+          'Ghostscriptがインストールされていないか、PATHが設定されていません。' +
+          'インストール時に「Add to search path」にチェックを入れるか、システム設定でPATHに追加してください。'
         );
       }
 

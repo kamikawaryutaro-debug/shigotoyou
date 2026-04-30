@@ -18,7 +18,8 @@ build/
 .next/
 out/
 .nuxt/
-uploads/
+backend/uploads/
+backend/data/
 *.sqlite
 *.db
 coverage/

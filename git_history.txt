@@ -1,0 +1,386 @@
+﻿commit 836e07137338f9289bda81de324392b8d473319a
+Author: Ryu <kamikawa.r.y.u.t.a.r.o@gmail.com>
+Date:   Fri Apr 17 15:10:37 2026 +0900
+
+    fix: Update API connection to local IP and finalize Plan A UI
+
+diff --git a/employee-pwa/src/pages/contract-view.js b/employee-pwa/src/pages/contract-view.js
+index 7aaa92d..f2e2f52 100644
+--- a/employee-pwa/src/pages/contract-view.js
++++ b/employee-pwa/src/pages/contract-view.js
+@@ -2,7 +2,7 @@
+  * 螂醍ｴ・嶌蜀・ｮｹ遒ｺ隱咲判髱｢
+  * 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ螳御ｺ・ｒ讀懃衍縺励※鄂ｲ蜷阪・繧ｿ繝ｳ繧呈怏蜉ｹ縺ｫ縺吶ｋ
+  */
+-import { getContractDetail } from '../api.js';
++import { getContractDetail, API_BASE } from '../api.js';
+ import { navigateTo, showToast } from '../main.js';
+ 
+ let currentSheetId = null;
+@@ -39,8 +39,7 @@ export async function initContractView() {
+     const contentEl = document.getElementById('contractContent');
+ 
+     // 繧ｨ繧ｯ繧ｻ繝ｫ縺ｮ逕ｻ髱｢繝励Ξ繝薙Η繝ｼ・亥ｴｩ繧後ｋ蜴溷屏・峨ｒ蜑企勁
+-    const API_HOST = window.location.hostname || 'localhost';
+-    const downloadUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/download?token=${localStorage.getItem('auth_token')}`;
++    const downloadUrl = `${API_BASE}/employee/contracts/${currentSheetId}/download?token=${localStorage.getItem('auth_token')}`;
+ 
+     const statusBadge = isSigned
+       ? '<span class="tag tag--signed">笨・鄂ｲ蜷肴ｸ医∩</span>'
+
+commit 2457f8a560e3fee57c7618263b09cc98c7546db1
+Author: Ryu <kamikawa.r.y.u.t.a.r.o@gmail.com>
+Date:   Fri Apr 17 14:26:40 2026 +0900
+
+    feat: Implement single sheet extraction and PWA direct file download UI
+
+diff --git a/employee-pwa/src/pages/contract-view.js b/employee-pwa/src/pages/contract-view.js
+index 49b4d32..7aaa92d 100644
+--- a/employee-pwa/src/pages/contract-view.js
++++ b/employee-pwa/src/pages/contract-view.js
+@@ -38,22 +38,7 @@ export async function initContractView() {
+ 
+     const contentEl = document.getElementById('contractContent');
+ 
+-    // 繧ｷ繝ｼ繝医ョ繝ｼ繧ｿ繧辿TML縺ｫ螟画鋤・域眠縺励＞HTML蟇ｾ蠢懊∵立繝・・繧ｿ讒矩縺ｮ繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ蜷ｫ繧・・-    let contentHtml = '';
+-    if (data.sheet_data && data.sheet_data.html) {
+-      // SheetJS縺九ｉ縺ｮHTML蜃ｺ蜉帙ｒ縺昴・縺ｾ縺ｾ豕ｨ蜈･
+-      contentHtml = `<div style="overflow-x: auto; max-width: 100%;">${data.sheet_data.html}</div>`;
+-    } else if (data.sheet_data && data.sheet_data.data) {
+-      contentHtml = buildSheetTable(data.sheet_data.data);
+-    } else {
+-      contentHtml = `
+-        <div style="padding: 24px; text-align: center; color: #666;">
+-          <p style="font-size: 1.25rem; margin-bottom: 8px;">塘 ${escapeHtml(data.sheet_name)}</p>
+-          <p>螂醍ｴ・嶌縺ｮ蜀・ｮｹ縺ｯ邂｡逅・・°繧蛾・蟶・＆繧後◆繝輔ぃ繧､繝ｫ繧偵＃遒ｺ隱阪￥縺縺輔＞縲・/p>
+-        </div>
+-      `;
+-    }
+-
++    // 繧ｨ繧ｯ繧ｻ繝ｫ縺ｮ逕ｻ髱｢繝励Ξ繝薙Η繝ｼ・亥ｴｩ繧後ｋ蜴溷屏・峨ｒ蜑企勁
+     const API_HOST = window.location.hostname || 'localhost';
+     const downloadUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/download?token=${localStorage.getItem('auth_token')}`;
+ 
+@@ -62,29 +47,25 @@ export async function initContractView() {
+       : '<span class="tag tag--pending">統 鄂ｲ蜷榊ｾ・■</span>';
+ 
+     contentEl.innerHTML = `
+-      <div class="card" style="cursor:default;">
+-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+-          <h3 style="word-break: break-all;">${escapeHtml(data.sheet_name)}</h3>
+-          ${statusBadge}
+-        </div>
+-        <div style="font-size:0.8125rem; color:var(--text-muted); margin-bottom: 12px;">
++      <div class="card" style="cursor:default; text-align: center; padding: 32px 16px;">
++        <div style="font-size: 3.5rem; margin-bottom: 16px;">塘</div>
++        <h3 style="word-break: break-all; margin-bottom: 12px; font-size: 1.25rem;">${escapeHtml(data.sheet_name)}</h3>
++        <div style="margin-bottom: 24px;">${statusBadge}</div>
++        
++        <p style="font-size: 0.9375rem; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.6;">
++          豁｣遒ｺ縺ｪ繝ｬ繧､繧｢繧ｦ繝医〒蜀・ｮｹ繧堤｢ｺ隱阪☆繧九◆繧√∽ｻ･荳九・繝懊ち繝ｳ縺九ｉ蜈・・繝輔ぃ繧､繝ｫ繧帝幕縺・※縺皮｢ｺ隱阪￥縺縺輔＞縲・+        </p>
++
++        <a href="${downloadUrl}" id="downloadLink" class="btn btn--primary" style="display: block; width: 100%; padding: 16px; font-size: 1.1rem; box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2); margin-bottom: 16px;" download>
++          筮・ｸ・螂醍ｴ・嶌繝輔ぃ繧､繝ｫ繧帝幕縺・+        </a>
++        <div style="font-size:0.75rem; color:var(--text-muted);">
+           繧｢繝・・繝ｭ繝ｼ繝画律: ${data.uploaded_at ? new Date(data.uploaded_at).toLocaleDateString('ja-JP') : '-'}
+         </div>
+-        <a href="${downloadUrl}" class="btn btn--outline btn--sm" download>
+-          筮・ｸ・Excel繝輔ぃ繧､繝ｫ繧偵ム繧ｦ繝ｳ繝ｭ繝ｼ繝・-        </a>
+-      </div>
+-
+-      <div id="scrollNotice" class="contract-view__scroll-notice">
+-        筮・ｸ・蜀・ｮｹ繧呈怙蠕後∪縺ｧ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ縺励※縺上□縺輔＞
+-      </div>
+-
+-      <div class="contract-view__content" id="contractScroll">
+-        ${contentHtml}
+       </div>
+ 
+       ${isSigned ? `
+-        <div class="card card--glow-green" style="text-align:center; cursor:default;">
++        <div class="card card--glow-green" style="text-align:center; cursor:default; margin-top: 24px;">
+           <div style="font-size:2rem; margin-bottom:8px;">笨・/div>
+           <div style="font-weight:600; color:var(--accent-green);">鄂ｲ蜷榊ｮ御ｺ・/div>
+           <div style="font-size:0.8125rem; color:var(--text-muted); margin-top:4px;">
+@@ -92,43 +73,32 @@ export async function initContractView() {
+           </div>
+         </div>
+       ` : `
+-        <button class="btn btn--primary" id="goSignBtn" disabled>
+-          白 鄂ｲ蜷阪☆繧九↓縺ｯ譛蠕後∪縺ｧ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ縺励※縺上□縺輔＞
+-        </button>
++        <div style="margin-top: 24px;">
++          <button class="btn" id="goSignBtn" style="background-color: var(--accent-green); color: white; border: none; width: 100%; opacity: 0.5;" disabled>
++            白 繝輔ぃ繧､繝ｫ繧帝幕縺上→鄂ｲ蜷阪〒縺阪∪縺・+          </button>
++        </div>
+       `}
+     `;
+ 
+-    // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ讀懃衍
++    // 鄂ｲ蜷阪・繧ｿ繝ｳ縺ｮ蛻ｶ蠕｡・医ヵ繧｡繧､繝ｫ繧帝幕縺・◆蠕後↓譛牙柑蛹厄ｼ・     if (!isSigned) {
+-      const scrollEl = document.getElementById('contractScroll');
+       const signBtn = document.getElementById('goSignBtn');
+-      const notice = document.getElementById('scrollNotice');
+-
+-      const checkScroll = () => {
+-        const { scrollTop, scrollHeight, clientHeight } = scrollEl;
+-        // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ蜿ｯ閭ｽ驥上′蟆代↑縺・ｴ蜷茨ｼ医さ繝ｳ繝・Φ繝・′遏ｭ縺・ｴ蜷茨ｼ峨・譛蛻昴°繧画怏蜉ｹ
+-        if (scrollHeight <= clientHeight + 10) {
+-          enableSignButton();
+-          return;
+-        }
+-        if (scrollTop + clientHeight >= scrollHeight - 20) {
+-          enableSignButton();
+-        }
+-      };
+-
+-      function enableSignButton() {
+-        signBtn.disabled = false;
+-        signBtn.innerHTML = '笨搾ｸ・鄂ｲ蜷阪↓騾ｲ繧';
+-        notice.classList.add('contract-view__scroll-done');
+-        notice.innerHTML = '笨・蜀・ｮｹ繧堤｢ｺ隱阪＠縺ｾ縺励◆';
+-      }
+-
+-      scrollEl.addEventListener('scroll', checkScroll);
+-      // 蛻晏屓繝√ぉ繝・け・医さ繝ｳ繝・Φ繝・′遏ｭ縺・ｴ蜷茨ｼ・-      setTimeout(checkScroll, 300);
++      const downloadLink = document.getElementById('downloadLink');
++
++      downloadLink.addEventListener('click', () => {
++        // 繧ｿ繝・・蠕後∝ｰ代＠驕・ｻｶ縺輔○縺ｦ繝懊ち繝ｳ繧呈怏蜉ｹ蛹厄ｼ医せ繝槭・縺ｮ謖吝虚蟇ｾ蠢懶ｼ・+        setTimeout(() => {
++          signBtn.disabled = false;
++          signBtn.style.opacity = '1';
++          signBtn.innerHTML = '笨搾ｸ・蜀・ｮｹ繧堤｢ｺ隱阪＠縺ｦ鄂ｲ蜷阪↓騾ｲ繧';
++        }, 1000);
++      });
+ 
+       signBtn.addEventListener('click', () => {
+-        navigateTo(`/sign/${currentSheetId}`);
++        if (!signBtn.disabled) {
++          navigateTo(`/sign/${currentSheetId}`);
++        }
+       });
+     }
+ 
+@@ -142,35 +112,6 @@ export async function initContractView() {
+   }
+ }
+ 
+-function buildSheetTable(data) {
+-  if (!data || data.length === 0) return '<p>繝・・繧ｿ縺後≠繧翫∪縺帙ｓ</p>';
+-  
+-  let html = '<div style="overflow-x: auto; max-width: 100%;"><table class="contract-view__table" style="white-space: pre-wrap; word-break: break-all; min-width: max-content;">';
+-  data.forEach((row, i) => {
+-    html += '<tr>';
+-    if (Array.isArray(row)) {
+-      row.forEach(cell => {
+-        let val = cell;
+-        if (val && typeof val === 'object') {
+-          if (val.result !== undefined) val = val.result;
+-          else if (val.text !== undefined) val = val.text;
+-          else val = JSON.stringify(val);
+-        }
+-        
+-        // 遨ｺ繧ｻ繝ｫ縺ｮ蝣ｴ蜷医・繝懊・繝繝ｼ繧呈ｶ医☆縺ｪ縺ｩ縲∝ｰ代＠Excel縺｣縺ｽ縺剰ｦ九○繧句ｷ･螟ｫ
+-        const isEmpty = val === null || val === undefined || String(val).trim() === '';
+-        const style = isEmpty ? 'border-color: transparent; background: transparent;' : '';
+-        const tag = i === 0 ? 'th' : 'td';
+-        
+-        html += `<${tag} style="${style}">${escapeHtml(String(val ?? ''))}</${tag}>`;
+-      });
+-    }
+-    html += '</tr>';
+-  });
+-  html += '</table></div>';
+-  return html;
+-}
+-
+ function escapeHtml(str) {
+   if (!str) return '';
+   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+commit 591a8855d8d9b0e7b737669c451a5f629862a70a
+Author: Your Name <you@example.com>
+Date:   Wed Mar 25 12:15:57 2026 +0900
+
+    initial commit
+
+diff --git a/employee-pwa/src/pages/contract-view.js b/employee-pwa/src/pages/contract-view.js
+new file mode 100644
+index 0000000..49b4d32
+--- /dev/null
++++ b/employee-pwa/src/pages/contract-view.js
+@@ -0,0 +1,177 @@
++/**
++ * 螂醍ｴ・嶌蜀・ｮｹ遒ｺ隱咲判髱｢
++ * 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ螳御ｺ・ｒ讀懃衍縺励※鄂ｲ蜷阪・繧ｿ繝ｳ繧呈怏蜉ｹ縺ｫ縺吶ｋ
++ */
++import { getContractDetail } from '../api.js';
++import { navigateTo, showToast } from '../main.js';
++
++let currentSheetId = null;
++
++export function renderContractView(sheetId) {
++  currentSheetId = sheetId;
++  return `
++    <header class="app-header">
++      <button class="app-header__back" id="backBtn">竊・謌ｻ繧・/button>
++      <div class="app-header__title">螂醍ｴ・嶌遒ｺ隱・/div>
++      <div style="width: 60px;"></div>
++    </header>
++    <div class="page">
++      <div id="contractContent">
++        <div class="loading-page">
++          <div class="spinner"></div>
++          <div class="loading-text">螂醍ｴ・嶌繧定ｪｭ縺ｿ霎ｼ縺ｿ荳ｭ...</div>
++        </div>
++      </div>
++    </div>
++  `;
++}
++
++export async function initContractView() {
++  document.getElementById('backBtn').addEventListener('click', () => {
++    navigateTo('/contracts');
++  });
++
++  try {
++    const result = await getContractDetail(currentSheetId);
++    const data = result.data;
++    const isSigned = data.status === 'signed' || data.status === 'completed';
++
++    const contentEl = document.getElementById('contractContent');
++
++    // 繧ｷ繝ｼ繝医ョ繝ｼ繧ｿ繧辿TML縺ｫ螟画鋤・域眠縺励＞HTML蟇ｾ蠢懊∵立繝・・繧ｿ讒矩縺ｮ繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ蜷ｫ繧・・+    let contentHtml = '';
++    if (data.sheet_data && data.sheet_data.html) {
++      // SheetJS縺九ｉ縺ｮHTML蜃ｺ蜉帙ｒ縺昴・縺ｾ縺ｾ豕ｨ蜈･
++      contentHtml = `<div style="overflow-x: auto; max-width: 100%;">${data.sheet_data.html}</div>`;
++    } else if (data.sheet_data && data.sheet_data.data) {
++      contentHtml = buildSheetTable(data.sheet_data.data);
++    } else {
++      contentHtml = `
++        <div style="padding: 24px; text-align: center; color: #666;">
++          <p style="font-size: 1.25rem; margin-bottom: 8px;">塘 ${escapeHtml(data.sheet_name)}</p>
++          <p>螂醍ｴ・嶌縺ｮ蜀・ｮｹ縺ｯ邂｡逅・・°繧蛾・蟶・＆繧後◆繝輔ぃ繧､繝ｫ繧偵＃遒ｺ隱阪￥縺縺輔＞縲・/p>
++        </div>
++      `;
++    }
++
++    const API_HOST = window.location.hostname || 'localhost';
++    const downloadUrl = `http://${API_HOST}:5000/api/employee/contracts/${currentSheetId}/download?token=${localStorage.getItem('auth_token')}`;
++
++    const statusBadge = isSigned
++      ? '<span class="tag tag--signed">笨・鄂ｲ蜷肴ｸ医∩</span>'
++      : '<span class="tag tag--pending">統 鄂ｲ蜷榊ｾ・■</span>';
++
++    contentEl.innerHTML = `
++      <div class="card" style="cursor:default;">
++        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
++          <h3 style="word-break: break-all;">${escapeHtml(data.sheet_name)}</h3>
++          ${statusBadge}
++        </div>
++        <div style="font-size:0.8125rem; color:var(--text-muted); margin-bottom: 12px;">
++          繧｢繝・・繝ｭ繝ｼ繝画律: ${data.uploaded_at ? new Date(data.uploaded_at).toLocaleDateString('ja-JP') : '-'}
++        </div>
++        <a href="${downloadUrl}" class="btn btn--outline btn--sm" download>
++          筮・ｸ・Excel繝輔ぃ繧､繝ｫ繧偵ム繧ｦ繝ｳ繝ｭ繝ｼ繝・+        </a>
++      </div>
++
++      <div id="scrollNotice" class="contract-view__scroll-notice">
++        筮・ｸ・蜀・ｮｹ繧呈怙蠕後∪縺ｧ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ縺励※縺上□縺輔＞
++      </div>
++
++      <div class="contract-view__content" id="contractScroll">
++        ${contentHtml}
++      </div>
++
++      ${isSigned ? `
++        <div class="card card--glow-green" style="text-align:center; cursor:default;">
++          <div style="font-size:2rem; margin-bottom:8px;">笨・/div>
++          <div style="font-weight:600; color:var(--accent-green);">鄂ｲ蜷榊ｮ御ｺ・/div>
++          <div style="font-size:0.8125rem; color:var(--text-muted); margin-top:4px;">
++            鄂ｲ蜷肴律譎・ ${data.signed_at ? new Date(data.signed_at).toLocaleString('ja-JP') : '-'}
++          </div>
++        </div>
++      ` : `
++        <button class="btn btn--primary" id="goSignBtn" disabled>
++          白 鄂ｲ蜷阪☆繧九↓縺ｯ譛蠕後∪縺ｧ繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ縺励※縺上□縺輔＞
++        </button>
++      `}
++    `;
++
++    // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ讀懃衍
++    if (!isSigned) {
++      const scrollEl = document.getElementById('contractScroll');
++      const signBtn = document.getElementById('goSignBtn');
++      const notice = document.getElementById('scrollNotice');
++
++      const checkScroll = () => {
++        const { scrollTop, scrollHeight, clientHeight } = scrollEl;
++        // 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ蜿ｯ閭ｽ驥上′蟆代↑縺・ｴ蜷茨ｼ医さ繝ｳ繝・Φ繝・′遏ｭ縺・ｴ蜷茨ｼ峨・譛蛻昴°繧画怏蜉ｹ
++        if (scrollHeight <= clientHeight + 10) {
++          enableSignButton();
++          return;
++        }
++        if (scrollTop + clientHeight >= scrollHeight - 20) {
++          enableSignButton();
++        }
++      };
++
++      function enableSignButton() {
++        signBtn.disabled = false;
++        signBtn.innerHTML = '笨搾ｸ・鄂ｲ蜷阪↓騾ｲ繧';
++        notice.classList.add('contract-view__scroll-done');
++        notice.innerHTML = '笨・蜀・ｮｹ繧堤｢ｺ隱阪＠縺ｾ縺励◆';
++      }
++
++      scrollEl.addEventListener('scroll', checkScroll);
++      // 蛻晏屓繝√ぉ繝・け・医さ繝ｳ繝・Φ繝・′遏ｭ縺・ｴ蜷茨ｼ・+      setTimeout(checkScroll, 300);
++
++      signBtn.addEventListener('click', () => {
++        navigateTo(`/sign/${currentSheetId}`);
++      });
++    }
++
++  } catch (error) {
++    document.getElementById('contractContent').innerHTML = `
++      <div class="empty-state">
++        <div class="empty-state__icon">笞・・/div>
++        <div class="empty-state__text">隱ｭ縺ｿ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: ${escapeHtml(error.message)}</div>
++      </div>
++    `;
++  }
++}
++
++function buildSheetTable(data) {
++  if (!data || data.length === 0) return '<p>繝・・繧ｿ縺後≠繧翫∪縺帙ｓ</p>';
++  
++  let html = '<div style="overflow-x: auto; max-width: 100%;"><table class="contract-view__table" style="white-space: pre-wrap; word-break: break-all; min-width: max-content;">';
++  data.forEach((row, i) => {
++    html += '<tr>';
++    if (Array.isArray(row)) {
++      row.forEach(cell => {
++        let val = cell;
++        if (val && typeof val === 'object') {
++          if (val.result !== undefined) val = val.result;
++          else if (val.text !== undefined) val = val.text;
++          else val = JSON.stringify(val);
++        }
++        
++        // 遨ｺ繧ｻ繝ｫ縺ｮ蝣ｴ蜷医・繝懊・繝繝ｼ繧呈ｶ医☆縺ｪ縺ｩ縲∝ｰ代＠Excel縺｣縺ｽ縺剰ｦ九○繧句ｷ･螟ｫ
++        const isEmpty = val === null || val === undefined || String(val).trim() === '';
++        const style = isEmpty ? 'border-color: transparent; background: transparent;' : '';
++        const tag = i === 0 ? 'th' : 'td';
++        
++        html += `<${tag} style="${style}">${escapeHtml(String(val ?? ''))}</${tag}>`;
++      });
++    }
++    html += '</tr>';
++  });
++  html += '</table></div>';
++  return html;
++}
++
++function escapeHtml(str) {
++  if (!str) return '';
++  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
++}
