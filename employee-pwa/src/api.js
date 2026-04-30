@@ -20,8 +20,8 @@ const getApiBase = () => {
     return `http://${hostname}:5000/api`;
   }
   
-  // それ以外（Netlifyなどの本番URL）の場合、Renderのバックエンドサーバーを見に行く
-  return 'https://shigotoyou-backend.onrender.com/api';
+  // それ以外（Vercelなどの本番URL）の場合、Fly.ioのバックエンドサーバーを見に行く
+  return 'https://contract-approval-sys-backend.fly.dev/api';
 };
 
 export const API_BASE = getApiBase();
