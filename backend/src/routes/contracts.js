@@ -70,15 +70,15 @@ const upload = multer({
 
 // ルート定義
 // GET: 全契約書取得
-router.get('/', contractController.getContracts);
+router.get('/', (req, res) => contractController.getContracts(req, res));
 
 // POST: Excel または PDF ファイルアップロード
-router.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'files' }]), contractController.uploadContract);
+router.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'files' }]), (req, res) => contractController.uploadContract(req, res));
 
 // GET: 特定の契約書詳細
-router.get('/:id', contractController.getContractDetail);
+router.get('/:id', (req, res) => contractController.getContractDetail(req, res));
 
 // GET: 契約書シート一覧
-router.get('/:contractId/sheets', contractController.getContractSheets);
+router.get('/:contractId/sheets', (req, res) => contractController.getContractSheets(req, res));
 
 export default router;

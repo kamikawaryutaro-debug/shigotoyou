@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { dbRun, dbQuery, dbGet } from '../db.js';
+import { dbRun, dbQuery, dbGet, getJSTDate } from '../db.js';
 import excelService from '../services/excelService.js';
 import path from 'path';
 
@@ -57,11 +57,12 @@ class ContractController {
         sheetInfo = await excelService.extractSheets(firstFile.path);
         console.log('\n📊 [Excel] 抽出されたシート:', JSON.stringify(sheetInfo, null, 2));
 
+        const now = getJSTDate();
         // 契約書レコード作成
         await dbRun(
-          `INSERT INTO contracts (id, contract_id, file_name, file_path, file_size, uploaded_by, total_sheets, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, contractId, originalName, firstFile.path, totalSize, '00000000-0000-0000-0000-000000000000', sheetInfo.length, 'in_progress']
+          `INSERT INTO contracts (id, contract_id, file_name, file_path, file_size, uploaded_by, total_sheets, status, uploaded_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, contractId, originalName, firstFile.path, totalSize, '00000000-0000-0000-0000-000000000000', sheetInfo.length, 'in_progress', now, now]
         );
 
         for (let i = 0; i < sheetInfo.length; i++) {
@@ -70,15 +71,15 @@ class ContractController {
           const employeeName = sheet.employeeName || sheet.name;
           const sheetNameExtracted = sheet.sheetNameExtracted;
 
-          const user = await findUserByNameMatch(employeeName, sheetNameExtracted);
+          const user = await this.findUserByNameMatch(employeeName, sheetNameExtracted);
 
           if (user) {
             await dbRun(
-              `INSERT INTO contract_sheets (id, contract_id, user_id, sheet_name, sheet_index, status) VALUES (?, ?, ?, ?, ?, ?)`,
-              [sheetId, id, user.id, sheet.name, i, 'pending']
+              `INSERT INTO contract_sheets (id, contract_id, user_id, sheet_name, sheet_index, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [sheetId, id, user.id, sheet.name, i, 'pending', now, now]
             );
             matchedSheets.push({ sheet_id: sheetId, sheet_name: sheet.name, employee_id: user.employee_id, full_name: user.full_name, email: user.email, status: 'matched' });
-            await sendLineNotification(user, sheet.name);
+            await this.sendLineNotification(user, sheet.name);
           } else {
             matchedSheets.push({ sheet_name: sheet.name, employee_name: employeeName, status: 'unmatched', message: '従業員が見つかりません' });
           }
@@ -89,11 +90,12 @@ class ContractController {
         sheetInfo = pdfFiles.map(f => ({ name: f.originalname, file: f }));
         totalSize = pdfFiles.reduce((sum, f) => sum + f.size, 0);
 
+        const now = getJSTDate();
         // バッチ(フォルダ)全体で1つの契約書レコードを作成
         await dbRun(
-          `INSERT INTO contracts (id, contract_id, file_name, file_path, file_size, uploaded_by, total_sheets, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, contractId, isMultiple ? 'PDFフォルダ一括アップロード' : originalName, isMultiple ? 'multiple_files' : firstFile.path, totalSize, '00000000-0000-0000-0000-000000000000', pdfFiles.length, 'in_progress']
+          `INSERT INTO contracts (id, contract_id, file_name, file_path, file_size, uploaded_by, total_sheets, status, uploaded_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, contractId, isMultiple ? 'PDFフォルダ一括アップロード' : originalName, isMultiple ? 'multiple_files' : firstFile.path, totalSize, '00000000-0000-0000-0000-000000000000', pdfFiles.length, 'in_progress', now, now]
         );
 
         for (let i = 0; i < pdfFiles.length; i++) {
@@ -109,13 +111,8 @@ class ContractController {
           const nameWithoutExt = path.basename(pdfOriginalName, path.extname(pdfOriginalName));
           const employeeName = nameWithoutExt.replace(/\s+/g, '').replace(/　+/g, ''); // スペース除去
 
-          const user = await findUserByNameMatch(nameWithoutExt, null);
-
-          if (user) {
-            // contract_sheets.sheet_name にはファイルパスを保存してPDFを開けるようにする、または別にカラムを作る。
-          
           const user = await this.findUserByNameMatch(nameWithoutExt, null);
-
+          
           if (user) {
             const uploadsDir = process.env.UPLOADS_PATH || 'uploads';
             const file_path = path.join(uploadsDir, currentPdf.filename);
@@ -128,7 +125,9 @@ class ContractController {
               [sheetId, id, user.id, combinedSheetName, i, 'pending']
             );
             matchedSheets.push({ sheet_id: sheetId, sheet_name: nameWithoutExt, employee_id: user.employee_id, full_name: user.full_name, email: user.email, status: 'matched' });
-            await sendLineNotification(user, 'PDF契約書');
+            
+            // LINE通知の送信（ヘルパーメソッドを呼び出す際は this を使用）
+            await this.sendLineNotification(user, 'PDF契約書');
           } else {
             matchedSheets.push({ sheet_name: pdfOriginalName, employee_name: nameWithoutExt, status: 'unmatched', message: '従業員が見つかりません' });
           }
@@ -156,16 +155,42 @@ class ContractController {
 
   // --- 共通のヘルパーメソッド ---
   async findUserByNameMatch(employeeName, sheetNameExtracted) {
-    const searchName = employeeName.replace(/\s+/g, '').replace(/　+/g, '');
+    if (!employeeName) return null;
+
+    // 前後の空白削除と全角・半角スペースの統一・除去
+    const cleanName = (name) => name.trim().replace(/\s+/g, '').replace(/　+/g, '');
+    const searchName = cleanName(employeeName);
+    
+    console.log(`🔍 照合開始: エクセル抽出名="${employeeName}", 検索用="${searchName}"`);
+
+    // 1. 完全一致（スペース込み）
     let user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE full_name = ?`, [employeeName]);
-    if (!user) user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE REPLACE(REPLACE(full_name, ' ', ''), '　', '') = ?`, [searchName]);
-    if (!user) user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE full_name LIKE ?`, [`%${employeeName}%`]);
-    if (!user) user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE last_name = ? OR last_name LIKE ?`, [employeeName, `%${employeeName}%`]);
-    if (!user) user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE first_name = ? OR first_name LIKE ?`, [employeeName, `%${employeeName}%`]);
-    if (!user && sheetNameExtracted) {
-      user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE last_name = ?`, [sheetNameExtracted]);
+    if (user) return user;
+
+    // 2. スペースを除去して比較
+    user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE REPLACE(REPLACE(full_name, ' ', ''), '　', '') = ?`, [searchName]);
+    if (user) return user;
+
+    // 3. 部分一致 (エクセルの名前が登録名に含まれているか)
+    user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE full_name LIKE ?`, [`%${searchName}%`]);
+    if (user) return user;
+
+    // 4. シート名から抽出された名前での照合（もしあれば）
+    if (sheetNameExtracted) {
+      const cleanSheetName = cleanName(sheetNameExtracted);
+      console.log(`🔍 シート名抽出での再照合: "${cleanSheetName}"`);
+      user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE REPLACE(REPLACE(full_name, ' ', ''), '　', '') = ?`, [cleanSheetName]);
+      if (user) return user;
     }
-    return user;
+
+    // 5. 名字（姓）のみでの照合（※重複リスクがあるため最後に行う）
+    if (searchName.length >= 2) {
+      user = await dbGet(`SELECT id, full_name, employee_id, email, line_user_id FROM users WHERE last_name = ?`, [searchName]);
+      if (user) return user;
+    }
+
+    console.warn(`⚠️ 照合失敗: "${employeeName}" に一致する従業員が見つかりませんでした。`);
+    return null;
   }
 
   async sendLineNotification(user, docName) {

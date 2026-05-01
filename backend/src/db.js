@@ -8,6 +8,17 @@ import fs from 'fs/promises';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// 日本時間の現在時刻を取得するヘルパー関数
+export const getJSTDate = () => {
+  try {
+    const now = new Date();
+    const jstDate = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+    return jstDate.toISOString().replace('Z', '').replace('T', ' ').split('.')[0];
+  } catch (e) {
+    return new Date().toISOString(); // フォールバック
+  }
+};
+
 // 環境変数またはデフォルトのパス（プロセス実行ディレクトリ基準）
 const dbPath = process.env.DATABASE_PATH
   ? path.resolve(process.cwd(), process.env.DATABASE_PATH)

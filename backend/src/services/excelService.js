@@ -12,7 +12,7 @@ class ExcelService {
         const worksheet = workbook.worksheets[i];
         const sheetName = worksheet.name;
 
-        // 複数のセルから従業員名を抽出
+        // 従業員名の抽出
         let employeeName = '';
         let candidates = [];
         const cellsToCheck = ['P4', 'CI2', 'A4', 'B4', 'A3', 'B3', 'A2', 'B2', 'A5', 'B5'];
@@ -49,7 +49,6 @@ class ExcelService {
                   value: cellValue,
                   score: (hasKanji ? 10 : 0) + cellValue.length
                 });
-                console.log(`  📍 候補発見 (${cellRef}): "${cellValue}" (Score: ${(hasKanji ? 10 : 0) + cellValue.length})`);
               }
             }
           } catch (err) { }
@@ -59,39 +58,30 @@ class ExcelService {
         if (candidates.length > 0) {
           candidates.sort((a, b) => b.score - a.score);
           employeeName = candidates[0].value;
-          console.log(`  ✅ 最良の候補を選択: "${employeeName}"`);
         }
 
-        // シート名から括弧内の名前を常に抽出（バックアップ用）
+        // シート名からカッコ内の名前を抽出
         let sheetNameExtracted = null;
         const parenthesesMatch = sheetName.match(/\(([^)]+)\)$/);
         if (parenthesesMatch && parenthesesMatch[1]) {
-          const extracted = parenthesesMatch[1].trim();
-          if (extracted.length >= 2 && extracted.length < 20) {
-            sheetNameExtracted = extracted;
-            console.log(`  📌 シート名から苗字を抽出: "${sheetNameExtracted}"`);
-          }
+          sheetNameExtracted = parenthesesMatch[1].trim();
         }
 
-        // セルから見つからない場合、シート名から抽出した名前を使用
-        if (!employeeName && sheetNameExtracted) {
-          employeeName = sheetNameExtracted;
-          console.log(`  ✅ シート名から抽出した苗字を使用: "${employeeName}"`);
+        // シート名そのものが名前の場合（フォールバック）
+        if (!employeeName && !sheetNameExtracted && !/^Sheet\d+$/i.test(sheetName)) {
+          employeeName = sheetName;
         }
 
         sheets.push({
           name: sheetName,
           index: i,
-          employeeName: employeeName || sheetName,
-          sheetNameExtracted: sheetNameExtracted, // シート名から抽出した苗字（バックアップ用）
+          employeeName: employeeName || sheetNameExtracted || sheetName,
+          sheetNameExtracted: sheetNameExtracted,
           rowCount: worksheet.rowCount,
           colCount: worksheet.columnCount
         });
 
-        console.log(`  📋 確定された従業員名: "${employeeName || sheetName}"`);
-        if (sheetNameExtracted) {
-          console.log(`  📋 シート名から抽出: "${sheetNameExtracted}"\n`);
-        }
+        console.log(`  📋 確定された従業員名: "${employeeName || sheetName}"\n`);
       }
 
       console.log(`✅ ${sheets.length} 個のシートを抽出しました`);

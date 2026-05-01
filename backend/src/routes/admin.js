@@ -1,6 +1,6 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { dbRun, dbQuery, dbGet } from '../db.js';
+import { dbRun, dbQuery, dbGet, getJSTDate } from '../db.js';
 import pdfService from '../services/pdfService.js';
 import excelService from '../services/excelService.js';
 import path from 'path';
@@ -272,7 +272,7 @@ router.post('/users', async (req, res) => {
 
     const id = uuidv4();
     const full_name = `${last_name} ${first_name}`;
-    const now = new Date().toISOString();
+    const now = getJSTDate();
 
     await dbRun(
       `INSERT INTO users (id, employee_id, first_name, last_name, full_name, email, phone, department, position, status, created_at, updated_at)
