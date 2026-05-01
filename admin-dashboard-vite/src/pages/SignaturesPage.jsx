@@ -85,64 +85,47 @@ export default function SignaturesPage() {
       
       container.style.width = `${finalWidth}px`;
 
-      console.log('📄 PDF生成ロジック(v3)開始: 強制1ページ縮小モード');
+      console.log('📄 PDF生成ロジック(v4)開始: 手動画像配置モード');
 
-      // html2canvasが確実に画像をキャプチャできるよう、すべての画像のロード完了を待つ
-      const images = Array.from(container.querySelectorAll('img'));
-      await Promise.all(images.map(img => {
-        if (img.complete) return Promise.resolve();
-        return new Promise(resolve => {
-          img.onload = resolve;
-          img.onerror = resolve;
-        });
-      }));
+      // html2canvasでキャプチャ
+      const canvas = await window.html2canvas(container, {
+        scale: 2, 
+        useCORS: true, 
+        logging: false,
+        width: actualWidth,
+        height: actualHeight
+      });
 
-      // A4横の比率 (297 / 210 = 1.414)
-      const a4Ratio = 1.414;
-      const rect = contentDiv.getBoundingClientRect();
-      const actualWidth = rect.width;
-      const actualHeight = rect.height;
-      const currentRatio = actualWidth / actualHeight;
-
-      // もし縦長すぎる（比率が1.414より小さい）場合は、
-      // PDFの1ページに収まるようにスケーリングを調整する
-      let scale = 1;
-      if (currentRatio < a4Ratio) {
-        // 高さ基準でA4に収まるように計算
-        // (A4の高さ 210mm に対して、幅が 210 * 1.414 = 297mm になるようにする)
-        // ここではhtml2pdfの内部処理に任せるため、コンテナのスタイルで調整
-        console.log(`📏 スケーリング調整: 比率 ${currentRatio.toFixed(2)}`);
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      
+      // jsPDFを直接操作（html2pdfに内蔵されているものを使用）
+      // html2pdf.bundle.min.js には jspdf が含まれています
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('landscape', 'mm', 'a4');
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      // 画像の比率を維持しつつ、1ページに収まるようにリサイズ
+      const imgProps = pdf.getImageProperties(imgData);
+      const ratio = imgProps.width / imgProps.height;
+      
+      let printWidth = pdfWidth;
+      let printHeight = pdfWidth / ratio;
+      
+      // もし高さがはみ出す場合は、高さを基準にリサイズ
+      if (printHeight > pdfHeight) {
+        printHeight = pdfHeight;
+        printWidth = pdfHeight * ratio;
       }
 
-      const opt = {
-        margin: 5,
-        filename: `signed_${sheet.full_name || 'contract'}_${sheet.sheet_name}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2, 
-          useCORS: true, 
-          logging: false,
-          width: actualWidth,
-          height: actualHeight
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        // auto-pagingを無効化し、1つの要素として扱う
-        pagebreak: { mode: 'avoid-all' }
-      };
+      // 中央に配置
+      const marginX = (pdfWidth - printWidth) / 2;
+      const marginY = (pdfHeight - printHeight) / 2;
 
-      // 1ページに強制フィットさせるための処理
-      const worker = window.html2pdf().set(opt).from(container);
-      
-      // pdfオブジェクトを直接操作して、1ページ内にリサイズして配置する
-      const pdfBlob = await worker.toPdf().get('pdf').then(pdf => {
-        const totalPages = pdf.internal.getNumberOfPages();
-        if (totalPages > 1) {
-          console.warn(`⚠️ ${totalPages}ページ検出されました。1ページに圧縮します。`);
-        }
-        return pdf;
-      }).save();
+      pdf.addImage(imgData, 'JPEG', marginX, marginY, printWidth, printHeight);
+      pdf.save(`signed_${sheet.full_name || 'contract'}_${sheet.sheet_name}.pdf`);
 
-      message.success('PDFが保存されました');
       message.success('PDFが保存されました');
     } catch (error) {
       console.error(error);
