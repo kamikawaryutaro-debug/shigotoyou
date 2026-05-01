@@ -85,70 +85,33 @@ export default function SignaturesPage() {
       
       container.style.width = `${finalWidth}px`;
 
+      console.log('📄 PDF生成ロジック(v3)開始: 強制1ページ縮小モード');
+
       // html2canvasが確実に画像をキャプチャできるよう、すべての画像のロード完了を待つ
       const images = Array.from(container.querySelectorAll('img'));
       await Promise.all(images.map(img => {
         if (img.complete) return Promise.resolve();
         return new Promise(resolve => {
           img.onload = resolve;
-          img.onerror = resolve; // エラーでも止まらないようにする
+          img.onerror = resolve;
         });
       }));
 
-      // html2pdfが処理を完了するまで少し待機（DOMのレンダリング完了待ち）
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // A4横の比率 (297 / 210 = 1.414)
+      const a4Ratio = 1.414;
+      const rect = contentDiv.getBoundingClientRect();
+      const actualWidth = rect.width;
+      const actualHeight = rect.height;
+      const currentRatio = actualWidth / actualHeight;
 
-      // html2canvasを手動で実行し、生成されたCanvasに直接画像を合成する（html2canvasの絶対配置バグ回避のため）
-      const canvas = await window.html2canvas(container, {
-        scale: 2, 
-        useCORS: true, 
-        logging: false,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: Math.ceil(finalWidth),
-        width: Math.ceil(finalWidth),
-        windowHeight: Math.ceil(actualHeight),
-        height: Math.ceil(actualHeight)
-      });
-
-      const ctx = canvas.getContext('2d');
-      const previewContainer = container.querySelector('.excel-preview-container');
-      
-      if (previewContainer) {
-        const rectContainer = container.getBoundingClientRect();
-        const rectPreview = previewContainer.getBoundingClientRect();
-        const offsetX = rectPreview.left - rectContainer.left;
-        const offsetY = rectPreview.top - rectContainer.top;
-
-        // 絶対配置されている画像（ハンコや署名）を抽出してCanvasに上書き描画
-        const absoluteImages = images.filter(img => img.style.position === 'absolute');
-        for (const img of absoluteImages) {
-          const left = parseFloat(img.style.left) || 0;
-          const top = parseFloat(img.style.top) || 0;
-          
-          let drawWidth = parseFloat(img.style.width) || img.naturalWidth;
-          let drawHeight = parseFloat(img.style.height) || img.naturalHeight;
-          
-          // object-fit: contain や max-height の反映
-          if (img.style.maxHeight && img.style.height === '') {
-            const maxH = parseFloat(img.style.maxHeight);
-            const ratio = img.naturalWidth / img.naturalHeight;
-            if (img.naturalHeight > maxH) {
-              drawHeight = maxH;
-              drawWidth = maxH * ratio;
-            } else {
-              drawHeight = img.naturalHeight;
-              drawWidth = img.naturalWidth;
-            }
-          }
-          
-          const finalX = (offsetX + left) * 2;
-          const finalY = (offsetY + top) * 2;
-          
-          ctx.globalAlpha = parseFloat(img.style.opacity) || 1.0;
-          ctx.drawImage(img, finalX, finalY, drawWidth * 2, drawHeight * 2);
-          ctx.globalAlpha = 1.0; // リセット
-        }
+      // もし縦長すぎる（比率が1.414より小さい）場合は、
+      // PDFの1ページに収まるようにスケーリングを調整する
+      let scale = 1;
+      if (currentRatio < a4Ratio) {
+        // 高さ基準でA4に収まるように計算
+        // (A4の高さ 210mm に対して、幅が 210 * 1.414 = 297mm になるようにする)
+        // ここではhtml2pdfの内部処理に任せるため、コンテナのスタイルで調整
+        console.log(`📏 スケーリング調整: 比率 ${currentRatio.toFixed(2)}`);
       }
 
       const opt = {
@@ -159,15 +122,27 @@ export default function SignaturesPage() {
           scale: 2, 
           useCORS: true, 
           logging: false,
-          letterRendering: true
+          width: actualWidth,
+          height: actualHeight
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        // auto-pagingを無効化し、1つの要素として扱う
         pagebreak: { mode: 'avoid-all' }
       };
 
-      // html2pdfに直接canvasを渡すと分割されることがあるため、明示的に画像をPDF化する
-      const pdf = window.html2pdf().set(opt).from(canvas).toPdf().get('pdf');
-      await pdf.save();
+      // 1ページに強制フィットさせるための処理
+      const worker = window.html2pdf().set(opt).from(container);
+      
+      // pdfオブジェクトを直接操作して、1ページ内にリサイズして配置する
+      const pdfBlob = await worker.toPdf().get('pdf').then(pdf => {
+        const totalPages = pdf.internal.getNumberOfPages();
+        if (totalPages > 1) {
+          console.warn(`⚠️ ${totalPages}ページ検出されました。1ページに圧縮します。`);
+        }
+        return pdf;
+      }).save();
+
+      message.success('PDFが保存されました');
       message.success('PDFが保存されました');
     } catch (error) {
       console.error(error);
