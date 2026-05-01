@@ -152,14 +152,17 @@ export default function SignaturesPage() {
       }
 
       const opt = {
-        margin: [10, 10],
+        margin: [5, 5, 5, 5], // 余白を狭くする
         filename: `signed_${sheet.full_name || 'contract'}_${sheet.sheet_name}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: 'avoid-all' } // 強制的に1ページに収める
       };
 
-      // 合成済みのCanvasから直接PDFを生成
-      await window.html2pdf().set(opt).from(canvas).save();
+      // 合成済みのCanvasからPDFを生成。Canvas全体を1つの画像として扱い、A4横にフィットさせる
+      const pdf = window.html2pdf().set(opt).from(canvas);
+      await pdf.save();
       message.success('PDFが保存されました');
     } catch (error) {
       console.error(error);

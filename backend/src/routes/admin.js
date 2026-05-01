@@ -137,13 +137,17 @@ router.get('/signatures/:sheetId', async (req, res) => {
     let htmlContent = null;
     try {
       if (sheet.file_path && sheet.sheet_name && sheet.file_path !== 'multiple_files') {
+        console.log(`📄 HTML生成開始: ファイル=${sheet.file_path}, シート=${sheet.sheet_name}`);
         // 署名データがあればHTML生成時に埋め込む
         const sigData = (signature && signature.signature_data) ? signature.signature_data : null;
         const result = await excelService.getSheetHtml(sheet.file_path, sheet.sheet_name, sigData);
         htmlContent = result.html;
+        console.log('✅ HTML生成成功');
+      } else {
+        console.warn('⚠️ HTML生成スキップ: パスまたはシート名が不正です', { path: sheet.file_path, sheet: sheet.sheet_name });
       }
     } catch (err) {
-      console.warn('⚠️ 管理画面用HTML取得失敗:', err.message);
+      console.error('❌ 管理画面用HTML取得失敗:', err.message);
     }
 
     res.json({
