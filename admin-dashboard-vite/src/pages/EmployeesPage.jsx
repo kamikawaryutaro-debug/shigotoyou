@@ -28,7 +28,9 @@ export default function EmployeesPage() {
       const res = await axios.get(`${API_BASE}/admin/users`);
       if (res.data.success) setUsers(res.data.data);
     } catch (error) {
-      message.error('従業員データの取得に失敗しました');
+      console.error('Fetch Users Error:', error);
+      const errorMsg = error.response?.data?.error || '従業員データの取得に失敗しました';
+      message.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -74,10 +76,15 @@ export default function EmployeesPage() {
       setEditingUser(null);
       fetchUsers();
     } catch (error) {
+      console.error('Submit Error:', error);
       if (error.response?.data?.error) {
-        message.error(error.response.data.error);
+        const errorMsg = error.response.data.error;
+        const detail = error.response.data.detail ? ` (${error.response.data.detail})` : '';
+        message.error(`${errorMsg}${detail}`);
+      } else if (error.response?.status === 500) {
+        message.error('サーバーエラーが発生しました。バックエンドのログを確認してください。');
       } else if (!error.errorFields) {
-        message.error('処理に失敗しました');
+        message.error('接続に失敗しました。サーバーが起動しているか確認してください。');
       }
     }
   };

@@ -287,7 +287,12 @@ router.post('/users', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ 従業員作成エラー:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('リクエストボディ:', req.body);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      detail: 'サーバー側でエラーが発生しました。データベースのスキーマ設定を確認してください。'
+    });
   }
 });
 

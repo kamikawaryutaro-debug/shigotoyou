@@ -32,16 +32,6 @@ export const initializeDatabase = async () => {
       driver: sqlite3.Database
     });
 
-    // 既存のテーブルへのカラム追加（移行用）
-    try {
-      await db.run('ALTER TABLE users ADD COLUMN line_user_id TEXT');
-      console.log('✅ users テーブルに line_user_id カラムを追加しました');
-    } catch (e) {
-      if (!e.message.includes('duplicate column name')) {
-        console.warn('⚠️ 移行警告:', e.message);
-      }
-    }
-
     // --- 自動移行: email カラムの NOT NULL 制約を解除 ---
     try {
       const tableInfo = await db.all("PRAGMA table_info(users)");
@@ -108,6 +98,43 @@ export const initializeDatabase = async () => {
 
     // テーブル作成
     await createTables();
+
+    // 既存のテーブルへのカラム追加（自動移行 - テーブル作成後に実行）
+    const migrateColumns = async (tableName, columns) => {
+      try {
+        const tableInfo = await db.all(`PRAGMA table_info(${tableName})`);
+        const existingColumns = tableInfo.map(c => c.name);
+        
+        for (const col of columns) {
+          if (!existingColumns.includes(col.name)) {
+            try {
+              // 注意: SQLiteのALTER TABLE ... ADD COLUMNでは、DEFAULT制約にいくつかの制限があります
+              await db.run(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`);
+              console.log(`✅ ${tableName} テーブルに ${col.name} カラムを追加しました`);
+            } catch (e) {
+              console.warn(`⚠️ ${tableName} への ${col.name} 追加失敗:`, e.message);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`⚠️ ${tableName} の情報取得に失敗しました:`, err.message);
+      }
+    };
+
+    try {
+      await migrateColumns('users', [
+        { name: 'phone', type: 'TEXT' },
+        { name: 'department', type: 'TEXT' },
+        { name: 'position', type: 'TEXT' },
+        { name: 'status', type: 'TEXT DEFAULT "active"' },
+        { name: 'created_at', type: 'TEXT DEFAULT CURRENT_TIMESTAMP' },
+        { name: 'updated_at', type: 'TEXT DEFAULT CURRENT_TIMESTAMP' },
+        { name: 'last_login_at', type: 'TEXT' },
+        { name: 'line_user_id', type: 'TEXT' }
+      ]);
+    } catch (e) {
+      console.warn('⚠️ users テーブルの移行中にエラーが発生しました:', e.message);
+    }
 
     console.log(`✅ SQLite データベース接続: ${dbPath}`);
     return db;
