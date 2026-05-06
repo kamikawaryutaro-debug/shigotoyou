@@ -153,44 +153,60 @@ class ExcelService {
         }
       }
 
-      // 3. 画像（印影など）を抽出してHTMLタグ化
+      // 3. 代表者印（ハンコ）などの画像を抽出
+      // 位置情報が不足している場合、キーワード（代表、社長など）を探してその付近に置く
+      let ceoKeywordPos = { left: 500, top: 100 }; // デフォルト
+      for (let r = 1; r <= Math.min(maxRow, 100); r++) {
+        const row = worksheet.getRow(r);
+        for (let c = 1; c <= maxCol; c++) {
+          const val = String(this._getCellValue(row.getCell(c)) || '');
+          if (val.includes('代表') || val.includes('社長') || val.includes('飯島')) {
+            ceoKeywordPos = { 
+              left: colOffsets[c] + 280, // さらに右へ（名前の後に被るように）
+              top: rowOffsets[r] + 10    // 少し下へ
+            };
+            break;
+          }
+        }
+      }
+
       let imagesHtml = '';
       const images = worksheet.getImages();
       for (const imgRef of images) {
         try {
           const img = workbook.getImage(imgRef.imageId);
           const range = imgRef.range;
-          if (!range || !range.from) continue;
-
-          // 座標計算 (ExcelJSの range.from.col/row は0始まり)
-          // ヘッダーのオフセット (HEADER_COL_WIDTH, HEADER_ROW_HEIGHT) を考慮
+          
+          let left = 0, top = 0, width = 100, height = 100;
           const emuToPx = 1 / 9525;
-          const left = colOffsets[range.from.col] + (range.from.colOff * emuToPx);
-          const top = rowOffsets[range.from.row] + (range.from.rowOff * emuToPx);
 
-          let width, height;
-          if (range.to) {
-            const right = colOffsets[range.to.col] + (range.to.colOff * emuToPx);
-            const bottom = rowOffsets[range.to.row] + (range.to.rowOff * emuToPx);
-            width = Math.max(right - left, 10);
-            height = Math.max(bottom - top, 10);
+          if (range && range.from) {
+            left = colOffsets[range.from.col] + (range.from.colOff * emuToPx);
+            top = rowOffsets[range.from.row] + (range.from.rowOff * emuToPx);
+            if (range.to) {
+              const right = colOffsets[range.to.col] + (range.to.colOff * emuToPx);
+              const bottom = rowOffsets[range.to.row] + (range.to.rowOff * emuToPx);
+              width = Math.max(right - left, 10);
+              height = Math.max(bottom - top, 10);
+            }
           } else {
-            width = 100; height = 100;
+            // 位置情報がない場合は、見つけたキーワードの近くに配置
+            left = ceoKeywordPos.left;
+            top = ceoKeywordPos.top;
+            width = 65; height = 65; // 印影サイズを微調整
           }
 
           const base64 = img.buffer.toString('base64');
           const mimeType = img.extension === 'png' ? 'image/png' : 'image/jpeg';
-
-          imagesHtml += `<img src="data:${mimeType};base64,${base64}" style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; pointer-events: none; z-index: 1002; opacity: 1.0; transform-origin: top left;">`;
+          imagesHtml += `<img src="data:${mimeType};base64,${base64}" class="excel-embedded-image" style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; pointer-events: none; z-index: 2000; opacity: 1.0; transform-origin: top left;">`;
         } catch (err) {
-          console.warn('⚠️ 画像抽出スキップ:', err.message);
+          console.error('❌ 画像抽出エラー:', err.message);
         }
       }
 
-      // 4. 署名画像の位置を計算（テーブル生成前に最終コンテンツ行を特定）
+      // 4. 署名画像の位置を計算
       let signatureHtml = '';
       if (signatureData) {
-        // 最後のコンテンツ行（テキストがある行）を見つける
         let lastContentRow = 0;
         for (let r = maxRow; r >= 1; r--) {
           const row = worksheet.getRow(r);
