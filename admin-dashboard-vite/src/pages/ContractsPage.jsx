@@ -356,7 +356,7 @@ export default function ContractsPage() {
             setFileList(prev => prev.filter(f => f.uid !== file.uid));
           }}
           fileList={fileList}
-          accept=".xlsx,.xls,.pdf"
+          accept=".xlsx,.xls,.xlsm,.pdf"
           multiple={true}
           directory={true}
           listType="text"

@@ -197,7 +197,7 @@ export default function DashboardPage() {
         <Upload
           name="file"
           action={`${API_BASE}/contracts/upload`}
-          accept=".xlsx,.xls"
+          accept=".xlsx,.xls,.xlsm"
           maxCount={1}
           onChange={handleUploadChange}
           listType="text"

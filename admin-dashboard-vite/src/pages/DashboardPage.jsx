@@ -216,7 +216,7 @@ export default function DashboardPage() {
         <Upload
           name="file"
           customRequest={customUpload}
-          accept=".xlsx,.xls"
+          accept=".xlsx,.xls,.xlsm"
           maxCount={1}
           listType="text"
         >
