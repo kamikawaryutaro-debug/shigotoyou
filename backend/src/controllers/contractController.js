@@ -1,9 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { dbRun, dbQuery, dbGet, getJSTDate } from '../db.js';
 import excelService from '../services/excelService.js';
+import { uploadFileToS3 } from '../services/s3Service.js';
 import path from 'path';
-
-class ContractController {
   // 全契約書取得
   async getContracts(req, res) {
     try {
@@ -54,15 +53,20 @@ class ContractController {
       if (!isPdf) {
         // --- 従来のエクセルアップロード処理 ---
         totalSize = firstFile.size;
-        sheetInfo = await excelService.extractSheets(firstFile.path);
+        // バッファを渡すように変更
+        sheetInfo = await excelService.extractSheets(firstFile.buffer, originalName);
         console.log('\n📊 [Excel] 抽出されたシート:', JSON.stringify(sheetInfo, null, 2));
+
+        // S3にアップロード
+        const s3Key = `contracts/${contractId}/${contractId}${ext}`;
+        await uploadFileToS3(s3Key, firstFile.buffer, firstFile.mimetype);
 
         const now = getJSTDate();
         // 契約書レコード作成
         await dbRun(
           `INSERT INTO contracts (id, contract_id, file_name, file_path, file_size, uploaded_by, total_sheets, status, uploaded_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, contractId, originalName, firstFile.path, totalSize, '00000000-0000-0000-0000-000000000000', sheetInfo.length, 'in_progress', now, now]
+          [id, contractId, originalName, s3Key, totalSize, '00000000-0000-0000-0000-000000000000', sheetInfo.length, 'in_progress', now, now]
         );
 
         for (let i = 0; i < sheetInfo.length; i++) {
@@ -95,7 +99,7 @@ class ContractController {
         await dbRun(
           `INSERT INTO contracts (id, contract_id, file_name, file_path, file_size, uploaded_by, total_sheets, status, uploaded_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, contractId, isMultiple ? 'PDFフォルダ一括アップロード' : originalName, isMultiple ? 'multiple_files' : firstFile.path, totalSize, '00000000-0000-0000-0000-000000000000', pdfFiles.length, 'in_progress', now, now]
+          [id, contractId, isMultiple ? 'PDFフォルダ一括アップロード' : originalName, 'multiple_s3_files', totalSize, '00000000-0000-0000-0000-000000000000', pdfFiles.length, 'in_progress', now, now]
         );
 
         for (let i = 0; i < pdfFiles.length; i++) {
@@ -107,6 +111,10 @@ class ContractController {
             pdfOriginalName = Buffer.from(pdfOriginalName, 'latin1').toString('utf8');
           } catch (e) { }
 
+          // S3にアップロード
+          const s3Key = `contracts/${contractId}/${sheetId}.pdf`;
+          await uploadFileToS3(s3Key, currentPdf.buffer, 'application/pdf');
+
           // PDFのファイル名（拡張子抜き）から従業員名を推測する
           const nameWithoutExt = path.basename(pdfOriginalName, path.extname(pdfOriginalName));
           const employeeName = nameWithoutExt.replace(/\s+/g, '').replace(/　+/g, ''); // スペース除去
@@ -114,8 +122,8 @@ class ContractController {
           const user = await this.findUserByNameMatch(nameWithoutExt, null);
           
           if (user) {
-            const uploadsDir = process.env.UPLOADS_PATH || 'uploads';
-            const file_path = path.join(uploadsDir, currentPdf.filename);
+            // S3のキーを保存する
+            const file_path = s3Key;
 
             // PDFファイルパスを保持するため sheet_name にフルパスを埋め込むなどの工夫が必要な場合
             const combinedSheetName = `${nameWithoutExt}||${currentPdf.filename}`;

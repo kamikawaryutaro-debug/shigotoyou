@@ -1,42 +1,12 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 import contractController from '../controllers/contractController.js';
-import fs from 'fs';
 
 const router = express.Router();
-const uploadsDir = process.env.UPLOADS_PATH 
-  ? path.resolve(process.cwd(), process.env.UPLOADS_PATH)
-  : path.join(process.cwd(), 'uploads');
 
-// アップロード用ディレクトリが存在しない場合は作成
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const timestamp = Date.now();
-    let originalName = file.originalname;
-    try {
-      const decoded = Buffer.from(file.originalname, 'latin1').toString('utf8');
-      // Accept decoded if it preserves .xls/.xlsx/.xlsm
-      if (decoded.toLowerCase().endsWith('.xls') ||
-        decoded.toLowerCase().endsWith('.xlsx') ||
-        decoded.toLowerCase().endsWith('.xlsm')) {
-        originalName = decoded;
-      }
-    } catch (e) { }
-    const ext = path.extname(originalName);
-    const name = path.basename(originalName, ext);
-    cb(null, `${name}-${timestamp}${ext}`);
-  }
-});
+// ディスクではなくメモリに保存し、S3への手動アップロードに備える
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -48,22 +18,21 @@ const upload = multer({
       originalName = file.originalname;
     }
 
-    // Fallback if originalName getting corrupted
     if (!originalName.toLowerCase().endsWith('.xls') &&
       !originalName.toLowerCase().endsWith('.xlsx') &&
       !originalName.toLowerCase().endsWith('.xlsm')) {
-      originalName = file.originalname; // Revert to raw name if extension got broken
+      originalName = file.originalname;
     }
 
     const allowedExt = ['.xlsx', '.xls', '.xlsm', '.pdf'];
     const ext = path.extname(originalName).toLowerCase();
 
-    console.log(`[Upload Filter] raw: ${file.originalname}, parsed: ${originalName}, ext: ${ext}`);
+    console.log(\`[Upload Filter] raw: \${file.originalname}, parsed: \${originalName}, ext: \${ext}\`);
 
     if (allowedExt.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error(`Excel（.xlsx, .xls, .xlsm）または PDF ファイル（.pdf）のみ対応。認識された拡張子: ${ext}`));
+      cb(new Error(\`Excel（.xlsx, .xls, .xlsm）または PDF ファイル（.pdf）のみ対応。認識された拡張子: \${ext}\`));
     }
   }
 });

@@ -3,9 +3,9 @@ import * as XLSX from 'xlsx';
 
 class ExcelService {
   // Excelファイルからシート情報を抽出
-  async extractSheets(filePath) {
+  async extractSheets(fileData, fileName = '') {
     try {
-      const workbook = await this._getWorkbook(filePath);
+      const workbook = await this._getWorkbook(fileData, fileName);
       const sheets = [];
 
       for (let i = 0; i < workbook.worksheets.length; i++) {
@@ -94,9 +94,9 @@ class ExcelService {
 
 
   // シートの内容をHTMLとして取得（ExcelJSでスタイル完全再現版 + 印影画像対応 + 署名合成対応）
-  async getSheetHtml(filePath, sheetName, signatureData = null) {
+  async getSheetHtml(fileData, fileName, sheetName, signatureData = null) {
     try {
-      const workbook = await this._getWorkbook(filePath);
+      const workbook = await this._getWorkbook(fileData, fileName);
 
       const worksheet = workbook.getWorksheet(sheetName);
       if (!worksheet) {
@@ -536,9 +536,9 @@ class ExcelService {
   }
 
   // シートデータの詳細取得（値のみ、空セル保持）- 管理者用等の互換性のため維持
-  async getSheetData(filePath, sheetIndex) {
+  async getSheetData(fileData, fileName, sheetIndex) {
     try {
-      const workbook = await this._getWorkbook(filePath);
+      const workbook = await this._getWorkbook(fileData, fileName);
 
       const worksheet = workbook.worksheets[sheetIndex];
       if (!worksheet) {
@@ -606,9 +606,9 @@ class ExcelService {
   }
 
   // 指定したシートのみを含むExcelファイルのバッファ（バイナリデータ）を生成する
-  async getSingleSheetExcelBuffer(filePath, targetSheetName) {
+  async getSingleSheetExcelBuffer(fileData, fileName, targetSheetName) {
     try {
-      const workbook = await this._getWorkbook(filePath);
+      const workbook = await this._getWorkbook(fileData, fileName);
 
       // 残すシート以外を削除するためのIDリストを作成
       const sheetIdsToRemove = [];
@@ -656,17 +656,26 @@ class ExcelService {
     }
   }
   // 拡張子に応じてWorkbookを読み込む内部メソッド
-  async _getWorkbook(filePath) {
+  async _getWorkbook(fileData, fileName = '') {
     const workbook = new ExcelJS.Workbook();
 
-    if (filePath.toLowerCase().endsWith('.xls')) {
+    if (fileName.toLowerCase().endsWith('.xls')) {
       // .xls (旧形式) の場合は xlsx ライブラリで読み込んで変換
-      const xlsWorkbook = XLSX.readFile(filePath);
+      let xlsWorkbook;
+      if (Buffer.isBuffer(fileData)) {
+        xlsWorkbook = XLSX.read(fileData, { type: 'buffer' });
+      } else {
+        xlsWorkbook = XLSX.readFile(fileData);
+      }
       const buffer = XLSX.write(xlsWorkbook, { type: 'buffer', bookType: 'xlsx' });
       await workbook.xlsx.load(buffer);
     } else {
-      // .xlsx / .xlsm の場合は直接読み込み
-      await workbook.xlsx.readFile(filePath);
+      // .xlsx / .xlsm の場合
+      if (Buffer.isBuffer(fileData)) {
+        await workbook.xlsx.load(fileData);
+      } else {
+        await workbook.xlsx.readFile(fileData);
+      }
     }
 
     return workbook;

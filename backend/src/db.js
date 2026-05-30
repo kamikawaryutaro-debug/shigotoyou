@@ -1,9 +1,11 @@
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import { createClient } from '@libsql/client';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import fs from 'fs/promises';
+import dotenv from 'dotenv';
+
+// 念のため .env を読み込み（ローカル動作用）
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,88 +21,28 @@ export const getJSTDate = () => {
   }
 };
 
-// 環境変数またはデフォルトのパス（プロセス実行ディレクトリ基準）
-const dbPath = process.env.DATABASE_PATH
-  ? path.resolve(process.cwd(), process.env.DATABASE_PATH)
-  : path.join(__dirname, '..', '..', 'data', 'contract_approval.db');
-
-let db = null;
+let client = null;
 
 // データベース初期化
 export const initializeDatabase = async () => {
   try {
-    // data フォルダが存在しない場合は作成
-    const dataDir = path.dirname(dbPath);
-    try {
-      await fs.mkdir(dataDir, { recursive: true });
-    } catch (err) {
-      // フォルダ作成失敗（既存の場合）
+    const url = process.env.TURSO_DATABASE_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+
+    if (!url) {
+      throw new Error('TURSO_DATABASE_URL が設定されていません。.env ファイルを確認してください。');
     }
 
-    // SQLite接続
-    db = await open({
-      filename: dbPath,
-      driver: sqlite3.Database
+    // Turso (libsql) クライアント作成
+    client = createClient({
+      url,
+      authToken,
     });
 
-    // --- 自動移行: email カラムの NOT NULL 制約を解除 ---
-    try {
-      const tableInfo = await db.all("PRAGMA table_info(users)");
-      const emailCol = tableInfo.find(c => c.name === 'email');
-
-      // notnull === 1 の場合は制約があるため移行が必要
-      if (emailCol && emailCol.notnull === 1) {
-        console.log('🔧 email カラムの制約変更（移行）を開始します...');
-        await db.exec('BEGIN TRANSACTION;');
-
-        // 1. 新しいテーブル作成
-        await db.exec(`
-          CREATE TABLE IF NOT EXISTS users_new (
-            id TEXT PRIMARY KEY,
-            employee_id TEXT UNIQUE NOT NULL,
-            first_name TEXT NOT NULL,
-            last_name TEXT NOT NULL,
-            full_name TEXT NOT NULL,
-            email TEXT UNIQUE,
-            password_hash TEXT,
-            phone TEXT,
-            department TEXT,
-            position TEXT,
-            status TEXT DEFAULT 'active',
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            last_login_at TEXT,
-            line_user_id TEXT
-          );
-        `);
-
-        // 2. データ移行
-        await db.exec('INSERT INTO users_new SELECT * FROM users;');
-        // 3. 元のテーブル削除
-        await db.exec('DROP TABLE users;');
-        // 4. 名前変更
-        await db.exec('ALTER TABLE users_new RENAME TO users;');
-        // 5. インデックス再作成
-        await db.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);');
-        await db.exec('CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);');
-
-        await db.exec('COMMIT;');
-        console.log('✅ 移行完了: users テーブルの email カラムを任意項目に変更しました');
-
-        // 移行と同時にパスワードも一度リセットして初期状態に戻す
-        await db.run('UPDATE users SET password_hash = NULL');
-        console.log('🔑 本番環境のパスワードをリセットしました（初回ログイン待ち状態）');
-      }
-    } catch (e) {
-      try { await db.exec('ROLLBACK;'); } catch (r) { }
-      console.error('⚠️ 移行失敗:', e.message);
-    }
-
     // --- 本番環境用: パスワードリセット（初回のみ/または必要に応じて） ---
-    // もし環境変数 RESET_PASSWORDS があれば、全ユーザーのパスワードをリセットする
     if (process.env.RESET_PASSWORDS === 'true') {
       try {
-        await db.run('UPDATE users SET password_hash = NULL');
+        await client.execute('UPDATE users SET password_hash = NULL');
         console.log('🔑 パスワードリセット完了: 全従業員が新しいパスワードでログイン可能です');
       } catch (e) {
         console.error('⚠️ パスワードリセット失敗:', e.message);
@@ -110,45 +52,8 @@ export const initializeDatabase = async () => {
     // テーブル作成
     await createTables();
 
-    // 既存のテーブルへのカラム追加（自動移行 - テーブル作成後に実行）
-    const migrateColumns = async (tableName, columns) => {
-      try {
-        const tableInfo = await db.all(`PRAGMA table_info(${tableName})`);
-        const existingColumns = tableInfo.map(c => c.name);
-        
-        for (const col of columns) {
-          if (!existingColumns.includes(col.name)) {
-            try {
-              // 注意: SQLiteのALTER TABLE ... ADD COLUMNでは、DEFAULT制約にいくつかの制限があります
-              await db.run(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`);
-              console.log(`✅ ${tableName} テーブルに ${col.name} カラムを追加しました`);
-            } catch (e) {
-              console.warn(`⚠️ ${tableName} への ${col.name} 追加失敗:`, e.message);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`⚠️ ${tableName} の情報取得に失敗しました:`, err.message);
-      }
-    };
-
-    try {
-      await migrateColumns('users', [
-        { name: 'phone', type: 'TEXT' },
-        { name: 'department', type: 'TEXT' },
-        { name: 'position', type: 'TEXT' },
-        { name: 'status', type: 'TEXT DEFAULT "active"' },
-        { name: 'created_at', type: 'TEXT DEFAULT CURRENT_TIMESTAMP' },
-        { name: 'updated_at', type: 'TEXT DEFAULT CURRENT_TIMESTAMP' },
-        { name: 'last_login_at', type: 'TEXT' },
-        { name: 'line_user_id', type: 'TEXT' }
-      ]);
-    } catch (e) {
-      console.warn('⚠️ users テーブルの移行中にエラーが発生しました:', e.message);
-    }
-
-    console.log(`✅ SQLite データベース接続: ${dbPath}`);
-    return db;
+    console.log(`✅ Turso データベース接続完了`);
+    return client;
   } catch (error) {
     console.error('❌ データベース初期化失敗:', error);
     throw error;
@@ -283,7 +188,7 @@ const createTables = async () => {
   `;
 
   try {
-    await db.exec(sql);
+    await client.executeMultiple(sql);
     console.log('✅ テーブル作成・確認完了');
 
     // サンプルデータ挿入
@@ -298,21 +203,26 @@ const createTables = async () => {
 const insertSampleData = async () => {
   try {
     // 既存データ確認
-    const existingUsers = await db.get('SELECT COUNT(*) as count FROM users');
+    const result = await client.execute('SELECT COUNT(*) as count FROM users');
+    const existingUsers = result.rows[0];
 
     if (existingUsers && existingUsers.count > 0) {
       console.log(`✅ サンプルデータは既に存在します（${existingUsers.count}名）`);
 
       // ただし、「清水」がいない場合は追加する
-      const shimizu = await db.get('SELECT id FROM users WHERE last_name = ?', ['清水']);
-      if (!shimizu) {
+      const shimizu = await client.execute({
+        sql: 'SELECT id FROM users WHERE last_name = ?',
+        args: ['清水']
+      });
+      
+      if (shimizu.rows.length === 0) {
         console.warn('⚠️ 清水がいないため追加します');
         const { v4: uuidv4 } = await import('uuid');
-        await db.run(
-          `INSERT INTO users (id, employee_id, first_name, last_name, full_name, email, department, position, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-          [uuidv4(), 'EMP006', '恭子', '清水', '清水 恭子', 'shimizu.kyoko@example.com', '営業部', 'パートタイマー']
-        );
+        await client.execute({
+          sql: \`INSERT INTO users (id, employee_id, first_name, last_name, full_name, email, department, position, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')\`,
+          args: [uuidv4(), 'EMP006', '恭子', '清水', '清水 恭子', 'shimizu.kyoko@example.com', '営業部', 'パートタイマー']
+        });
         console.log('✅ 清水 恭子を追加しました');
       }
       return;
@@ -330,11 +240,11 @@ const insertSampleData = async () => {
     ];
 
     for (const user of sampleUsers) {
-      await db.run(
-        `INSERT INTO users (id, employee_id, first_name, last_name, full_name, email, department, position, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-        [user.id, user.employee_id, user.first_name, user.last_name, user.full_name, user.email, user.department, user.position]
-      );
+      await client.execute({
+        sql: \`INSERT INTO users (id, employee_id, first_name, last_name, full_name, email, department, position, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')\`,
+        args: [user.id, user.employee_id, user.first_name, user.last_name, user.full_name, user.email, user.department, user.position]
+      });
     }
 
     console.log('✅ サンプルデータ（従業員6名）を挿入しました');
@@ -346,21 +256,24 @@ const insertSampleData = async () => {
 
 // データベース取得
 export const getDatabase = () => {
-  if (!db) {
+  if (!client) {
     throw new Error('データベースが初期化されていません');
   }
-  return db;
+  return client;
 };
 
-// ユーティリティ関数
+// ユーティリティ関数（既存コードからの互換性維持ラッパー）
 export const dbQuery = async (sql, params = []) => {
-  return await db.all(sql, params);
+  const result = await client.execute({ sql, args: params });
+  return result.rows;
 };
 
 export const dbRun = async (sql, params = []) => {
-  return await db.run(sql, params);
+  const result = await client.execute({ sql, args: params });
+  return { lastID: result.lastInsertRowid?.toString(), changes: result.rowsAffected };
 };
 
 export const dbGet = async (sql, params = []) => {
-  return await db.get(sql, params);
+  const result = await client.execute({ sql, args: params });
+  return result.rows.length > 0 ? result.rows[0] : null;
 };
